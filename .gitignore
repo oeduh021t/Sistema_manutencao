@@ -1,0 +1,13 @@
+# Uploads de usuários
+uploads/
+
+# Banco de dados
+*.sql
+
+# Arquivos de sessão / cache
+*.log
+cache/
+
+# Configurações sensíveis (se existirem)
+.env
+config/database.php
