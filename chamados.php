@@ -5,6 +5,10 @@ include_once 'includes/db.php';
 $usuario_id_logado = $_SESSION['usuario_id'];
 $nivel_logado = $_SESSION['usuario_nivel'];
 
+// --- NOVO: CAPTURA DADOS VINDOS DO QR CODE / HISTÓRICO ---
+$equip_selecionado_id = isset($_GET['equipamento_id']) ? $_GET['equipamento_id'] : null;
+$setor_selecionado_id = isset($_GET['setor_id']) ? $_GET['setor_id'] : null;
+
 // --- LÓGICA DE FILTROS ---
 $busca = isset($_GET['busca']) ? trim($_GET['busca']) : '';
 $status_filtro = isset($_GET['status_filtro']) ? $_GET['status_filtro'] : 'Todos';
@@ -164,8 +168,10 @@ $chamados = $stmt_c->fetchAll();
                         foreach ($lista_caminhos as $sid => $caminho):
                             $niveis = explode(" > ", $caminho);
                             $recuo = str_repeat("&nbsp;&nbsp;", (count($niveis) - 1) * 2);
+                            // Seleciona o setor automaticamente se vier da URL
+                            $selected_setor = ($sid == $setor_selecionado_id) ? 'selected' : '';
                         ?>
-                            <option value="<?= $sid ?>"><?= $recuo . "└─ " . $caminho ?></option>
+                            <option value="<?= $sid ?>" <?= $selected_setor ?>><?= $recuo . "└─ " . $caminho ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -173,8 +179,11 @@ $chamados = $stmt_c->fetchAll();
                     <label class="form-label fw-bold">Equipamento (Opcional)</label>
                     <select name="equipamento_id" id="equipamento_select" class="form-select">
                         <option value="" data-setor="todos">-- Não é um equipamento --</option>
-                        <?php foreach($equips as $eq): ?>
-                            <option value="<?= $eq['id'] ?>" data-setor="<?= $eq['setor_id'] ?>" style="display:none;">
+                        <?php foreach($equips as $eq): 
+                            // Seleciona o equipamento automaticamente se vier da URL
+                            $selected_equip = ($eq['id'] == $equip_selecionado_id) ? 'selected' : '';
+                        ?>
+                            <option value="<?= $eq['id'] ?>" data-setor="<?= $eq['setor_id'] ?>" <?= $selected_equip ?> style="display:none;">
                                 <?= $eq['patrimonio'] ?> - <?= htmlspecialchars($eq['nome']) ?>
                             </option>
                         <?php endforeach; ?>
@@ -206,12 +215,30 @@ function filtrarEquipamentos() {
     const setorId = document.getElementById('setor_select').value;
     const equipSelect = document.getElementById('equipamento_select');
     const options = equipSelect.options;
-    equipSelect.value = ""; 
+    
+    // Se não houver pré-seleção via URL, limpamos o valor
+    const urlParams = new URLSearchParams(window.location.search);
+    if (!urlParams.has('equipamento_id')) {
+        equipSelect.value = ""; 
+    }
+    
     for (let i = 0; i < options.length; i++) {
         const optSetorId = options[i].getAttribute('data-setor');
         options[i].style.display = (optSetorId === "todos" || optSetorId === setorId) ? "block" : "none";
     }
 }
+
+// GATILHO AUTOMÁTICO PARA QR CODE / HISTÓRICO
+document.addEventListener("DOMContentLoaded", function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('equipamento_id')) {
+        // Abre o modal automaticamente
+        var myModal = new bootstrap.Modal(document.getElementById('modalChamado'));
+        myModal.show();
+        // Dispara o filtro para mostrar o equipamento selecionado
+        filtrarEquipamentos();
+    }
+});
 
 // AUTO-REFRESH Inteligente (30s)
 setTimeout(function(){

@@ -3,6 +3,19 @@ include_once 'includes/db.php';
 
 $nivel_logado = $_SESSION['usuario_nivel'];
 
+// --- FUNÇÃO PARA GERAR O LINK DO QR CODE (API ESTÁVEL) ---
+function gerarLinkQRCodeLocal($id) {
+    $protocolo = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? "https" : "http";
+    $dominio = $_SERVER['HTTP_HOST'];
+    $caminho_projeto = str_replace('\\', '/', dirname($_SERVER['PHP_SELF']));
+    if ($caminho_projeto == '/') $caminho_projeto = '';
+    
+    // URL que o celular vai ler ao escanear a etiqueta
+    $url_destino = "{$protocolo}://{$dominio}{$caminho_projeto}/index.php?p=historico_equipamento&id={$id}";
+    
+    return "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" . urlencode($url_destino);
+}
+
 // --- LÓGICA DE FILTRO ---
 $busca = isset($_GET['busca']) ? trim($_GET['busca']) : '';
 $filtro_sql = "";
@@ -42,15 +55,15 @@ if (isset($_POST['salvar_equipamento'])) {
 
     $stmt = $pdo->prepare("INSERT INTO equipamentos (patrimonio, num_serie, nome, tipo_id, setor_id, foto_equipamento, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([$patrimonio, $num_serie, $nome, $tipo_id, $setor_id, $foto_nome, $status_ini]);
-    
+
     echo "<div class='alert alert-success mt-3 shadow-sm'>Equipamento '<strong>$nome</strong>' cadastrado com sucesso!</div>";
 }
 
 // 3. Buscar Equipamentos com Filtro
 $sql = "
-    SELECT e.*, s.nome as setor_nome, t.nome as tipo_nome 
-    FROM equipamentos e 
-    LEFT JOIN setores s ON e.setor_id = s.id 
+    SELECT e.*, s.nome as setor_nome, t.nome as tipo_nome
+    FROM equipamentos e
+    LEFT JOIN setores s ON e.setor_id = s.id
     LEFT JOIN tipos_equipamentos t ON e.tipo_id = t.id
     $filtro_sql
     ORDER BY e.id DESC
@@ -95,24 +108,22 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
                     <tr>
                         <th class="ps-4">Equipamento</th>
                         <th>Nº Série / Patrimônio</th>
-                        <th>Tipo</th>
                         <th>Setor</th>
                         <th>Status</th>
-                        <th class="text-end pe-4">Ações</th>
+                        <th>QR Code</th> <th class="text-end pe-4">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($equipamentos as $e): ?>
                     <tr>
-                        <td class="ps-4"><strong><?= htmlspecialchars($e['nome']) ?></strong></td>
+                        <td class="ps-4"><strong><?= htmlspecialchars($e['nome']) ?></strong><br><small class="text-muted"><?= htmlspecialchars($e['tipo_nome']) ?></small></td>
                         <td>
                             <small class="text-muted d-block">SN: <?= htmlspecialchars($e['num_serie']) ?: '---' ?></small>
                             <span class="badge bg-light text-dark border font-monospace"><?= htmlspecialchars($e['patrimonio']) ?></span>
                         </td>
-                        <td><?= htmlspecialchars($e['tipo_nome']) ?></td>
                         <td><small class="fw-bold text-primary"><?= htmlspecialchars($e['setor_nome']) ?></small></td>
                         <td>
-                            <?php 
+                            <?php
                                 $status_class = 'bg-secondary';
                                 if($e['status'] == 'Ativo') $status_class = 'bg-success';
                                 if($e['status'] == 'Em Manutenção') $status_class = 'bg-warning text-dark';
@@ -120,6 +131,37 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
                             ?>
                             <span class="badge <?= $status_class ?>"><?= $e['status'] ?></span>
                         </td>
+                        
+                        <td>
+                            <a href="#" data-bs-toggle="modal" data-bs-target="#modalQR<?= $e['id'] ?>">
+                                <img src="<?= gerarLinkQRCodeLocal($e['id']) ?>" width="35" class="img-thumbnail shadow-sm border-primary">
+                            </a>
+
+                            <div class="modal fade" id="modalQR<?= $e['id'] ?>" tabindex="-1">
+                                <div class="modal-dialog modal-sm">
+                                    <div class="modal-content border-0 shadow">
+                                        <div class="modal-header bg-primary text-white py-2">
+                                            <h6 class="modal-title">Etiqueta de Patrimônio</h6>
+                                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body text-center p-4" id="etiqueta<?= $e['id'] ?>">
+                                            <div style="border: 2px solid #000; padding: 10px; border-radius: 5px; background: #fff; display: inline-block;">
+                                                <small class="fw-bold d-block text-uppercase" style="font-size: 9px; margin-bottom: 5px;">HOSPITAL DOMINGOS LOURENÇO</small>
+                                                <img src="<?= gerarLinkQRCodeLocal($e['id']) ?>" style="width: 130px; height: 130px;">
+                                                <div class="fw-bold" style="font-size: 18px; margin-top: 5px; border-top: 1px solid #000;"><?= $e['patrimonio'] ?></div>
+                                                <div style="font-size: 10px; color: #000; font-weight: bold;"><?= htmlspecialchars($e['nome']) ?></div>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer bg-light">
+                                            <button type="button" class="btn btn-dark w-100 fw-bold shadow-sm" onclick="imprimirEtiqueta('etiqueta<?= $e['id'] ?>')">
+                                                <i class="bi bi-printer me-2"></i>IMPRIMIR AGORA
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
                         <td class="text-end pe-4">
                             <div class="btn-group shadow-sm">
                                 <?php if ($e['status'] == 'Reserva' || $e['status'] == 'Em Manutenção'): ?>
@@ -183,7 +225,6 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
                 <div class="mb-3">
                     <label class="form-label fw-bold">Localização</label>
                     <input type="text" id="filtro_setor" class="form-control form-control-sm mb-1" placeholder="🔍 Digite para pesquisar o setor...">
-                    
                     <select name="setor_id" id="setor_id_equip" class="form-select" size="8" required>
                         <?php
                         $lista_locais = [];
@@ -195,16 +236,14 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
                             $stmt_f = $pdo->prepare("SELECT COUNT(*) FROM setores WHERE setor_pai_id = ?");
                             $stmt_f->execute([$sid]);
                             $eh_pai = $stmt_f->fetchColumn() > 0;
-                            
                             $niveis = explode(" > ", $caminho);
-                            $recuo = str_repeat("  ", (count($niveis) - 1) * 2);
+                            $recuo = str_repeat("  ", (count($niveis) - 1) * 2);
                         ?>
                             <option value="<?= $sid ?>" <?= $eh_pai ? 'style="font-weight:bold; background-color:#f8f9fa;"' : '' ?>>
                                 <?= $recuo . ($eh_pai ? "■ " : "└─ ") . $caminho ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <small class="text-muted">Todos os níveis são selecionáveis.</small>
                 </div>
 
                 <div class="mb-3">
@@ -220,11 +259,29 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
 </div>
 
 <script>
-// Lógica de Busca Nativa (Sem bibliotecas externas para não dar erro)
+// Lógica de Impressão da Etiqueta (Sem cabeçalhos do sistema)
+function imprimirEtiqueta(divId) {
+    var conteudo = document.getElementById(divId).innerHTML;
+    var win = window.open('', '', 'height=500,width=500');
+    win.document.write('<html><head><title>Imprimir Etiqueta</title>');
+    win.document.write('<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">');
+    win.document.write('<style>body{display:flex; justify-content:center; align-items:center; height:100vh; margin:0; padding:0;}</style>');
+    win.document.write('</head><body>');
+    win.document.write(conteudo);
+    win.document.write('</body></html>');
+    win.document.close();
+    
+    // Pequeno delay para carregar o CSS antes de imprimir
+    setTimeout(function() {
+        win.print();
+        win.close();
+    }, 500);
+}
+
+// Filtro de Busca de Setor
 document.getElementById('filtro_setor').addEventListener('input', function() {
     let termo = this.value.toLowerCase();
     let options = document.getElementById('setor_id_equip').options;
-    
     for (let i = 0; i < options.length; i++) {
         let texto = options[i].text.toLowerCase();
         options[i].style.display = texto.includes(termo) ? "" : "none";

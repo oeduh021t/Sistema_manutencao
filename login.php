@@ -1,42 +1,53 @@
 <?php
 session_start();
+echo "DEBUG: Destino pendente é: " . ($_SESSION['url_redirecionamento'] ?? 'Nenhum');
 require_once 'includes/db.php';
+
+// Se o usuário já estiver logado e tentar acessar o login, 
+// verificamos se há um redirecionamento pendente antes de mandá-lo para a home
+if (isset($_SESSION['usuario_id'])) {
+    if (isset($_SESSION['url_redirecionamento'])) {
+        $destino = $_SESSION['url_redirecionamento'];
+        unset($_SESSION['url_redirecionamento']);
+        header("Location: " . $destino);
+    } else {
+        header("Location: index.php");
+    }
+    exit;
+}
 
 $erro = null;
 
 if (isset($_POST['btn_login'])) {
-    // trim() é essencial para evitar espaços invisíveis no login e na senha
     $login = trim($_POST['login']);
     $senha = trim($_POST['senha']);
 
     if (!empty($login) && !empty($senha)) {
         try {
-            // Busca o usuário ignorando maiúsculas/minúsculas
             $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE LOWER(login) = LOWER(?) LIMIT 1");
             $stmt->execute([$login]);
             $user = $stmt->fetch();
 
             if ($user) {
-                // Verificação oficial por Hash
-                if (password_verify($senha, $user['senha'])) {
+                // Verificação de Senha (Hash ou Plano B para senha '123')
+                $senha_correta = password_verify($senha, $user['senha']);
+                $fallback_123 = ($senha === '123' && strpos($user['senha'], '$2y$10$f6pGz') !== false);
+
+                if ($senha_correta || $fallback_123) {
                     $_SESSION['usuario_id'] = $user['id'];
                     $_SESSION['usuario_nome'] = $user['nome'];
                     $_SESSION['usuario_nivel'] = $user['nivel'];
-                    
-                    header("Location: index.php");
+
+                    // --- LÓGICA DE REDIRECIONAMENTO PÓS-QRCODE ---
+                    if (isset($_SESSION['url_redirecionamento'])) {
+                        $destino = $_SESSION['url_redirecionamento'];
+                        unset($_SESSION['url_redirecionamento']); // Limpa a sessão para não repetir o comportamento
+                        header("Location: " . $destino);
+                    } else {
+                        header("Location: index.php");
+                    }
                     exit;
-                } 
-                // Plano B: Se o hash no banco estiver corrompido mas a senha for '123'
-                // Isso ajuda a entrar caso o banco tenha alterado os caracteres do hash
-                elseif ($senha === '123' && strpos($user['senha'], '$2y$10$f6pGz') !== false) {
-                    $_SESSION['usuario_id'] = $user['id'];
-                    $_SESSION['usuario_nome'] = $user['nome'];
-                    $_SESSION['usuario_nivel'] = $user['nivel'];
-                    
-                    header("Location: index.php");
-                    exit;
-                }
-                else {
+                } else {
                     $erro = "Senha incorreta!";
                 }
             } else {
@@ -74,11 +85,17 @@ if (isset($_POST['btn_login'])) {
         <small>Controle de Chamados e Ativos</small>
     </div>
     <div class="card-body p-4 bg-white">
-        
+
         <?php if($erro): ?>
             <div class="alert alert-danger d-flex align-items-center" role="alert">
                 <i class="bi bi-exclamation-triangle-fill me-2"></i>
                 <div><?= $erro ?></div>
+            </div>
+        <?php endif; ?>
+
+        <?php if(isset($_SESSION['url_redirecionamento'])): ?>
+            <div class="alert alert-info py-2 small shadow-sm border-0 mb-3">
+                <i class="bi bi-qr-code-scan me-1"></i> Faça login para ver o histórico do ativo.
             </div>
         <?php endif; ?>
 

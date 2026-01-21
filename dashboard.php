@@ -23,6 +23,7 @@ $setores_stats = $pdo->query("
     FROM setores s
     LEFT JOIN equipamentos e ON e.setor_id = s.id
     LEFT JOIN chamados c ON c.equipamento_id = e.id
+    WHERE s.id <> 129   
     GROUP BY s.id
     HAVING total > 0
 ")->fetchAll();
