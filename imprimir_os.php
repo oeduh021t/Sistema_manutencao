@@ -4,7 +4,7 @@ $id = $_GET['id'] ?? null;
 
 if (!$id) { die("OS não encontrada."); }
 
-// 1. Busca dados principais
+// 1. Busca dados principais (incluindo os novos campos de tipo e nota)
 $stmt = $pdo->prepare("
     SELECT c.*, e.patrimonio, e.num_serie, e.nome as eq_nome, e.foto_equipamento, s.nome as setor_nome
     FROM chamados c
@@ -24,16 +24,10 @@ $fotos_abertura_extras = [];
 $fotos_conclusao_extras = [];
 
 foreach ($fotos_historico as $f) {
-    // TRAVA DE DUPLICIDADE: 
-    // Só adicionamos ao array extra se a foto NÃO for igual à foto principal de abertura ou conclusão
-    if ($f['status_momento'] === 'Aberto') {
-        if ($f['foto_historico'] !== $c['foto_abertura']) {
-            $fotos_abertura_extras[] = $f;
-        }
-    } elseif ($f['status_momento'] === 'Concluído') {
-        if ($f['foto_historico'] !== $c['foto_conclusao']) {
-            $fotos_conclusao_extras[] = $f;
-        }
+    if ($f['status_momento'] === 'Aberto' && $f['foto_historico'] !== $c['foto_abertura']) {
+        $fotos_abertura_extras[] = $f;
+    } elseif ($f['status_momento'] === 'Concluído' && $f['foto_historico'] !== $c['foto_conclusao']) {
+        $fotos_conclusao_extras[] = $f;
     }
 }
 ?>
@@ -43,31 +37,38 @@ foreach ($fotos_historico as $f) {
     <meta charset="UTF-8">
     <style>
         @page { size: A4; margin: 10mm; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #333; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #333; line-height: 1.4; }
         .page { width: 190mm; margin: auto; }
-        .header { text-align: center; border: 2px solid #000; padding: 10px; background: #f8f9fa; margin-bottom: 10px; }
+        .header { text-align: center; border: 2px solid #000; padding: 10px; background: #f8f9fa; margin-bottom: 10px; position: relative; }
+        .badge-externo { position: absolute; right: 10px; top: 10px; background: #d9534f; color: #fff; padding: 5px; font-weight: bold; font-size: 10px; }
         .section-title { background: #333; color: #fff; padding: 5px 10px; font-weight: bold; margin-top: 15px; text-transform: uppercase; }
         .info-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         .info-table td { border: 1px solid #000; padding: 8px; vertical-align: top; }
+
+        .gallery-container { display: flex; flex-wrap: wrap; gap: 10px; border: 1px solid #ccc; padding: 10px; background: #fdfdfd; }
+        .photo-card { width: 31%; border: 1px solid #ddd; padding: 5px; text-align: center; background: #fff; }
+        .photo-card img { max-width: 100%; max-height: 100px; object-fit: contain; }
         
-        .gallery-container { display: flex; flex-wrap: wrap; gap: 10px; border: 1px solid #ccc; padding: 10px; background: #fdfdfd; min-height: 50px; }
-        .photo-card { width: 30%; border: 1px solid #ddd; padding: 5px; text-align: center; background: #fff; }
-        .photo-card img { max-width: 100%; max-height: 120px; object-fit: contain; }
-        .photo-card span { display: block; font-size: 8px; color: #666; margin-top: 5px; }
+        .termo-juridico { margin-top: 20px; padding: 10px; border: 1px solid #000; background: #f9f9f9; font-size: 9.5px; text-align: justify; }
+        .assinaturas { margin-top: 50px; display: flex; justify-content: space-around; text-align: center; }
+        .assinaturas div { border-top: 1px solid #000; width: 28%; padding-top: 5px; }
 
         @media print { .no-print { display: none; } }
     </style>
 </head>
 <body>
 
-<div class="no-print" style="text-align:center; margin-bottom: 20px;">
-    <button onclick="window.print()" style="padding: 10px 20px; cursor:pointer; font-weight:bold;">IMPRIMIR RELATÓRIO TÉCNICO (OS)</button>
+<div class="no-print" style="text-align:center; margin: 20px;">
+    <button onclick="window.print()" style="padding: 10px 20px; cursor:pointer; font-weight:bold; background: #28a745; color:#fff; border:none; border-radius:5px;">GERAR DOCUMENTO FÍSICO (PDF)</button>
 </div>
 
 <div class="page">
     <div class="header">
+        <?php if($c['tipo_atendimento'] === 'Externo'): ?>
+            <div class="badge-externo text-uppercase">Assistência Externa</div>
+        <?php endif; ?>
         <h3 style="margin:0; text-transform: uppercase;">ORDEM DE SERVIÇO № <?= str_pad($c['id'], 6, "0", STR_PAD_LEFT) ?></h3>
-        <span>Hospital Domingos Lourenço - Departamento de Manutenção</span>
+        <span style="font-weight: bold;">Hospital Domingos Lourenço - Engenharia Clínica</span>
     </div>
 
     <table class="info-table">
@@ -85,54 +86,60 @@ foreach ($fotos_historico as $f) {
         </tr>
         <tr>
             <td><strong>LOCALIZAÇÃO:</strong> <?= htmlspecialchars($c['setor_nome']) ?></td>
-            <td><strong>TÉCNICO:</strong> <?= htmlspecialchars($c['tecnico_responsavel']) ?></td>
+            <td><strong>TÉCNICO RESPONSÁVEL:</strong> <?= htmlspecialchars($c['tecnico_responsavel']) ?></td>
         </tr>
     </table>
 
-    <div class="section-title">1. Evidências de Entrada (Início do Chamado)</div>
-    <div style="border: 1px solid #000; padding: 10px; margin-bottom: 5px;">
-        <strong>Relato do Problema:</strong> <?= nl2br(htmlspecialchars($c['descricao_problema'])) ?>
-    </div>
-    <div class="gallery-container">
-        <?php if($c['foto_abertura']): ?>
-            <div class="photo-card"><img src="uploads/<?= $c['foto_abertura'] ?>"><span>Foto Inicial</span></div>
-        <?php endif; ?>
-
-        <?php foreach($fotos_abertura_extras as $f): ?>
-            <div class="photo-card"><img src="uploads/<?= $f['foto_historico'] ?>"><span>Evidência Abertura</span></div>
-        <?php endforeach; ?>
+    <div class="section-title">1. Descrição do Defeito e Diagnóstico</div>
+    <div style="border: 1px solid #000; padding: 10px;">
+        <strong>Relato Inicial:</strong> <?= nl2br(htmlspecialchars($c['descricao_problema'])) ?>
     </div>
 
-    <div class="section-title">2. Evidências de Saída (Conclusão e Testes)</div>
-    <div class="gallery-container">
-        <?php if($c['foto_conclusao']): ?>
-            <div class="photo-card" style="border-color: #28a745;"><img src="uploads/<?= $c['foto_conclusao'] ?>"><span>Foto Entrega</span></div>
-        <?php endif; ?>
-
-        <?php foreach($fotos_conclusao_extras as $f): ?>
-            <div class="photo-card" style="border-color: #28a745;"><img src="uploads/<?= $f['foto_historico'] ?>"><span>Evidência Conclusão</span></div>
-        <?php endforeach; ?>
-    </div>
-
-    <div class="section-title">3. Relatório de Execução e Solução</div>
-    <div style="border: 1px solid #000; padding: 10px; margin-bottom: 5px; min-height: 100px;">
-        <strong>Solução Técnica Aplicada:</strong><br>
+    <div class="section-title">2. Relatório de Execução Técnica</div>
+    <div style="border: 1px solid #000; padding: 10px; min-height: 120px;">
+        <strong>Procedimentos realizados:</strong><br>
         <?= nl2br(htmlspecialchars($c['descricao_solucao'])) ?>
-        
-        <?php if($c['empresa_terceirizada']): ?>
-            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
-                <strong>Empresa:</strong> <?= htmlspecialchars($c['empresa_terceirizada']) ?> | 
+
+        <?php if($c['tipo_atendimento'] === 'Externo'): ?>
+            <div style="margin-top: 15px; padding: 8px; background: #eee; border: 1px solid #ccc;">
+                <strong>DADOS DO PRESTADOR:</strong> <?= htmlspecialchars($c['empresa_terceirizada']) ?> | 
                 <strong>NF:</strong> <?= htmlspecialchars($c['nf_referencia']) ?> | 
-                <strong>Custo:</strong> R$ <?= number_format($c['custo_servico'], 2, ',', '.') ?>
+                <strong>CUSTO:</strong> R$ <?= number_format($c['custo_servico'], 2, ',', '.') ?> |
+                <strong>AVALIAÇÃO:</strong> <?= $c['nota_fornecedor'] ?> Estrela(s)
             </div>
         <?php endif; ?>
     </div>
 
-    <div style="margin-top: 60px; display: flex; justify-content: space-around; text-align: center;">
-        <div style="border-top: 1px solid #000; width: 30%;">Responsável Técnico</div>
-        <div style="border-top: 1px solid #000; width: 30%;">Prestador / Empresa</div>
-        <div style="border-top: 1px solid #000; width: 30%;">Aceite do Setor</div>
+    <div class="section-title">3. Galeria de Evidências (Antes e Depois)</div>
+    <div class="gallery-container">
+        <?php if($c['foto_abertura']): ?>
+            <div class="photo-card"><img src="uploads/<?= $c['foto_abertura'] ?>"><br>Início</div>
+        <?php endif; ?>
+        <?php if($c['foto_conclusao']): ?>
+            <div class="photo-card" style="border-color: #28a745;"><img src="uploads/<?= $c['foto_conclusao'] ?>"><br>Conclusão</div>
+        <?php endif; ?>
+        <?php foreach($fotos_conclusao_extras as $f): ?>
+            <div class="photo-card"><img src="uploads/<?= $f['foto_historico'] ?>"><br>Teste/Peça</div>
+        <?php endforeach; ?>
+    </div>
+
+    <?php if($c['tipo_atendimento'] === 'Externo'): ?>
+    <div class="termo-juridico">
+        <strong>TERMO DE ENTREGA TÉCNICA E RESPONSABILIDADE:</strong><br>
+        O prestador acima identificado declara que realizou a manutenção corretiva/preventiva no equipamento descrito, utilizando peças adequadas e seguindo as normas técnicas vigentes. O equipamento foi entregue ao Hospital Domingos Lourenço devidamente testado em todas as suas funções vitais, com calibração verificada (quando aplicável) e em perfeitas condições de uso clínico. O hospital reserva-se o direito de contestar o serviço em caso de vícios ocultos ou falha prematura das peças substituídas dentro do prazo legal de garantia.
+    </div>
+    <?php else: ?>
+    <div class="termo-juridico" style="text-align: center;">
+        <strong>DECLARAÇÃO:</strong> O setor de Engenharia Clínica declara que o equipamento foi reparado internamente e testado para retorno imediato ao uso operacional.
+    </div>
+    <?php endif; ?>
+
+    <div class="assinaturas">
+        <div>Engenharia Clínica</div>
+        <div><?= ($c['tipo_atendimento'] === 'Externo') ? 'Prestador de Serviço' : 'Técnico Executante' ?></div>
+        <div>Aceite do Setor (Enfermagem)</div>
     </div>
 </div>
+
 </body>
 </html>

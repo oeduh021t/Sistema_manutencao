@@ -23,7 +23,7 @@ if (isset($_POST['registrar_emprestimo'])) {
     $item = $_POST['item_acessorio'];
     $solicitante = $_POST['solicitante'];
     $obs = $_POST['observacao'];
-    
+
     $stmt_ins = $pdo->prepare("INSERT INTO emprestimos (equipamento_id, item_acessorio, solicitante, observacao, status) VALUES (?, ?, ?, ?, 'Emprestado')");
     $stmt_ins->execute([$id, $item, $solicitante, $obs]);
     echo "<div class='alert alert-success shadow-sm'>Empréstimo registrado com sucesso!</div>";
@@ -93,7 +93,13 @@ $emprestimos_ativos = $stmt_ativos->fetchAll();
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4 mt-3">
         <h2><i class="bi bi-journal-medical text-primary"></i> Prontuário do Ativo</h2>
-        <div>
+        <div class="d-flex gap-2">
+            <a href="index.php?p=baixar_preventiva&id=<?= $id ?>" 
+               class="btn btn-success shadow-sm" 
+               onclick="return confirm('Confirmar a realização da Manutenção Preventiva para hoje?')">
+                <i class="bi bi-calendar-check"></i> Baixar Preventiva
+            </a>
+
             <button class="btn btn-outline-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#modalEmprestimo">
                 <i class="bi bi-plug"></i> Emprestar Acessório
             </button>
@@ -105,7 +111,7 @@ $emprestimos_ativos = $stmt_ativos->fetchAll();
     </div>
 
     <?php foreach ($emprestimos_ativos as $ativo): ?>
-        <div class="alert alert-warning border-warning shadow-sm d-flex justify-content-between align-items-center animate__animated animate__headShake">
+        <div class="alert alert-warning border-warning shadow-sm d-flex justify-content-between align-items-center animate__animated animate__headShake mb-3">
             <div>
                 <i class="bi bi-exclamation-triangle-fill me-2"></i>
                 <strong>ATENÇÃO:</strong> O item <b><?= $ativo['item_acessorio'] ?></b> está emprestado para <b><?= $ativo['solicitante'] ?></b> desde <?= date('d/m/H:i', strtotime($ativo['data_empréstimo'])) ?>.

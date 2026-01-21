@@ -77,17 +77,22 @@ foreach($tecnicos_stats as $tstat) {
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card <?= $preventivas_vencidas > 0 ? 'bg-dark text-warning' : 'bg-light text-muted' ?> shadow-sm border-0 h-100">
-                <div class="card-body py-3">
-                    <h6 class="small"><i class="bi bi-calendar-x me-1"></i> Preventivas Vencidas</h6>
-                    <h2 class="mb-0 fw-bold"><?= $preventivas_vencidas ?></h2>
-                    <?php if($preventivas_vencidas > 0): ?>
-                        <small style="font-size: 0.65rem;">Necessário revisão imediata</small>
-                    <?php endif; ?>
-                </div>
+       <div class="col-md-3">
+        <a href="index.php?p=preventivas" class="text-decoration-none">
+        <div class="card border-0 shadow-sm h-100 <?= $preventivas_vencidas > 0 ? 'bg-dark text-warning' : 'bg-light' ?>">
+            <div class="card-body">
+                <small class="<?= $preventivas_vencidas > 0 ? 'text-warning' : 'text-muted' ?>">Preventivas Vencidas</small>
+                <h2 class="fw-bold mb-0">
+                    <i class="bi bi-calendar-x me-2"></i><?= $preventivas_vencidas ?>
+                </h2>
+                <small class="text-muted" style="font-size: 0.6rem;">Clique para ver a lista</small>
             </div>
+         </div>
+        </a>
         </div>
+
+
+
         <div class="col-md-2">
             <div class="card bg-danger text-white shadow-sm border-0 h-100">
                 <div class="card-body py-3">
