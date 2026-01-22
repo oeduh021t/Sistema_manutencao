@@ -50,6 +50,10 @@ usort($timeline, function($a, $b) { return strtotime($b['data']) - strtotime($a[
     <div class="d-flex justify-content-between align-items-center mb-4 mt-3">
         <h2 class="fw-bold"><i class="bi bi-journal-medical text-primary"></i> Prontuário do Ativo</h2>
         <div class="d-flex gap-2">
+            <a href="index.php?p=chamados&equipamento_id=<?= $id ?>&setor_id=<?= $eq['setor_id'] ?>" class="btn btn-warning shadow-sm fw-bold">
+                <i class="bi bi-plus-circle"></i> Abrir Chamado
+            </a>
+
             <button class="btn btn-success shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalBaixaPreventiva">
                 <i class="bi bi-calendar-check"></i> Baixar Preventiva
             </button>
@@ -62,7 +66,7 @@ usort($timeline, function($a, $b) { return strtotime($b['data']) - strtotime($a[
 
     <div class="row">
         <div class="col-md-4">
-            <div class="card shadow-sm border-0 mb-4 overflow-hidden">
+            <div class="card shadow-sm border-0 mb-4 overflow-hidden text-dark">
                 <div class="card-body text-center bg-white">
                     <?php if ($eq['foto_equipamento']): ?>
                         <img src="uploads/<?= $eq['foto_equipamento'] ?>" class="img-fluid rounded border shadow-sm mb-3" style="max-height: 280px; width: 100%; object-fit: contain;">
@@ -73,13 +77,13 @@ usort($timeline, function($a, $b) { return strtotime($b['data']) - strtotime($a[
                         </div>
                     <?php endif; ?>
                     
-                    <h4 class="fw-bold text-dark mb-3"><?= htmlspecialchars($eq['nome']) ?></h4>
+                    <h4 class="fw-bold mb-3"><?= htmlspecialchars($eq['nome']) ?></h4>
                 </div>
 
                 <div class="list-group list-group-flush border-top">
                     <div class="list-group-item d-flex justify-content-between align-items-center py-3">
                         <span class="text-muted fw-bold small text-uppercase">Tipo</span>
-                        <span class="fw-bold text-dark"><?= htmlspecialchars($eq['tipo_nome']) ?></span>
+                        <span class="fw-bold"><?= htmlspecialchars($eq['tipo_nome']) ?></span>
                     </div>
                     <div class="list-group-item d-flex justify-content-between align-items-center py-3">
                         <span class="text-muted fw-bold small text-uppercase">Local</span>

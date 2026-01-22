@@ -1,6 +1,6 @@
 <?php
 session_start();
-echo "DEBUG: Destino pendente é: " . ($_SESSION['url_redirecionamento'] ?? 'Nenhum');
+// echo "DEBUG: Destino pendente é: " . ($_SESSION['url_redirecionamento'] ?? 'Nenhum');
 require_once 'includes/db.php';
 
 // Se o usuário já estiver logado e tentar acessar o login, 
@@ -66,7 +66,7 @@ if (isset($_POST['btn_login'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acesso - Sistema Manutenção</title>
+    <title>Login - Controle Interno</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
@@ -81,7 +81,7 @@ if (isset($_POST['btn_login'])) {
 
 <div class="card login-card shadow-lg">
     <div class="card-header">
-        <h4 class="mb-0"><i class="bi bi-shield-lock"></i> Manutenção Hosp</h4>
+        <h4 class="mb-0"><i class="bi bi-shield-lock"></i> Controle Interno - HMDL</h4>
         <small>Controle de Chamados e Ativos</small>
     </div>
     <div class="card-body p-4 bg-white">
@@ -122,7 +122,7 @@ if (isset($_POST['btn_login'])) {
         </form>
     </div>
     <div class="card-footer bg-light text-center py-3">
-        <small class="text-muted">&copy; 2026 Sistema de Gestão Hospitalar</small>
+        <small class="text-muted">&copy; 2026 Sistema de Gestão Hospitalar - HMDL</small>
     </div>
 </div>
 

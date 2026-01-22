@@ -19,21 +19,15 @@ $nivel = $_SESSION['usuario_nivel'];
         body { display: flex; min-height: 100vh; background-color: #f4f7f6; font-family: 'Segoe UI', sans-serif; }
         #sidebar { width: 280px; background: #1a1d20; color: white; transition: 0.3s; display: flex; flex-direction: column; box-shadow: 2px 0 10px rgba(0,0,0,0.2); }
         #content { flex: 1; padding: 25px; overflow-y: auto; }
-        
-        /* Menu Styling */
         .nav-link { color: #adb5bd; padding: 12px 20px; border-radius: 8px; margin: 2px 12px; transition: all 0.2s; display: flex; align-items: center; }
         .nav-link i { font-size: 1.1rem; width: 25px; }
         .nav-link:hover { color: white; background: rgba(255,255,255,0.08); }
         .nav-link.active { color: white; background: #0d6efd !important; font-weight: 600; }
-        
-        /* Dropdown Submenu */
         .submenu { background: rgba(0,0,0,0.3); border-radius: 8px; margin: 0 12px 10px 12px; padding: 5px 0; }
         .submenu .nav-link { font-size: 0.85rem; padding: 8px 15px 8px 45px; margin: 0; border-radius: 0; }
         .submenu .nav-link:hover { background: rgba(255,255,255,0.05); text-decoration: underline; }
-        
         .sidebar-header { padding: 25px 20px; font-weight: 800; font-size: 1.1rem; border-bottom: 1px solid #2d3238; color: #fff; letter-spacing: 0.5px; }
         .user-panel { padding: 15px 20px; background: rgba(255,255,255,0.03); border-bottom: 1px solid #2d3238; }
-        
         hr { border-color: #2d3238; opacity: 0.6; margin: 10px 20px; }
     </style>
 </head>
@@ -89,10 +83,11 @@ $nivel = $_SESSION['usuario_nivel'];
                 <span><i class="bi bi-file-earmark-check-fill text-info"></i> Relatórios & Auditoria</span>
                 <i class="bi bi-chevron-down small"></i>
             </a>
-            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['inventario_geral', 'auditoria_custos', 'relatorio_equipamento', 'relatorio_setor']) ? 'show' : '' ?>" id="collapseAuditoria">
+            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['inventario_geral', 'auditoria_custos', 'auditoria_equipamentos']) ? 'show' : '' ?>" id="collapseAuditoria">
                 <div class="submenu">
                     <a href="index.php?p=inventario_geral" class="nav-link text-white">Inventário Geral</a>
                     <a href="index.php?p=auditoria_custos" class="nav-link text-white">Auditoria de Custos</a>
+                    <a href="index.php?p=auditoria_equipamentos" class="nav-link text-white"> Auditoria Equipamentos</a>
                 </div>
             </div>
         </li>
@@ -129,9 +124,9 @@ $nivel = $_SESSION['usuario_nivel'];
         $default_page = ($nivel === 'usuario') ? 'chamados' : 'dashboard';
         $pagina = isset($_GET['p']) ? $_GET['p'] : $default_page;
 
-        // --- SISTEMA DE PERMISSÕES ---
-        $paginas_gerenciais = ['equipamentos', 'setores', 'tipos_equipamentos', 'fornecedores', 'relatorios', 'inventario_geral', 'auditoria_custos', 'relatorio_equipamento', 'relatorio_setor'];
-        $paginas_proibidas_usuario = ['dashboard', 'equipamentos', 'setores', 'usuarios', 'tratar_chamado', 'relatorios', 'fornecedores', 'inventario_geral', 'auditoria_custos'];
+        // --- SISTEMA DE PERMISSÕES ATUALIZADO ---
+        $paginas_gerenciais = ['equipamentos', 'setores', 'tipos_equipamentos', 'fornecedores', 'relatorios', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos'];
+        $paginas_proibidas_usuario = ['dashboard', 'equipamentos', 'setores', 'usuarios', 'tratar_chamado', 'relatorios', 'fornecedores', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos'];
 
         if ($nivel === 'usuario' && in_array($pagina, $paginas_proibidas_usuario)) {
             $pagina = 'chamados';
