@@ -60,9 +60,10 @@ $nivel = $_SESSION['usuario_nivel'];
                 <span><i class="bi bi-plus-square-fill text-primary"></i> Cadastros</span>
                 <i class="bi bi-chevron-down small"></i>
             </a>
-            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['equipamentos', 'fornecedores', 'setores', 'tipos_equipamentos']) ? 'show' : '' ?>" id="collapseCadastros">
+            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['equipamentos', 'itens',  'fornecedores', 'setores', 'tipos_equipamentos']) ? 'show' : '' ?>" id="collapseCadastros">
                 <div class="submenu">
                     <a href="index.php?p=equipamentos" class="nav-link text-white">Equipamentos</a>
+                    <a href="index.php?p=itens" class="nav-link text-white">Itens</a>
                     <a href="index.php?p=fornecedores" class="nav-link text-white">Fornecedores</a>
                     <a href="index.php?p=setores" class="nav-link text-white">Setores</a>
                     <a href="index.php?p=tipos_equipamentos" class="nav-link text-white">Tipos de Equip.</a>
@@ -83,9 +84,11 @@ $nivel = $_SESSION['usuario_nivel'];
                 <span><i class="bi bi-file-earmark-check-fill text-info"></i> Relatórios & Auditoria</span>
                 <i class="bi bi-chevron-down small"></i>
             </a>
-            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['inventario_geral', 'auditoria_custos', 'auditoria_equipamentos']) ? 'show' : '' ?>" id="collapseAuditoria">
+            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['inventario_geral', 'inventario_itens', 'auditoria_custos', 'auditoria_equipamentos']) ? 'show' : '' ?>" id="collapseAuditoria">
                 <div class="submenu">
-                    <a href="index.php?p=inventario_geral" class="nav-link text-white">Inventário Geral</a>
+                    <a href="index.php?p=inventario_geral" class="nav-link text-white">Inventário Geral - Equipamentos</a>
+                    <a href="index.php?p=inventario_itens" class="nav-link text-white">Inventário Geral - Itens</a>
+                    <a href="index.php?p=relatorio_emprestimos" class="nav-link text-white">Itens emprestados</a>
                     <a href="index.php?p=auditoria_custos" class="nav-link text-white">Auditoria de Custos</a>
                     <a href="index.php?p=auditoria_equipamentos" class="nav-link text-white"> Auditoria Equipamentos</a>
                 </div>

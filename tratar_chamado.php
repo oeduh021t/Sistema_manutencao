@@ -23,7 +23,44 @@ $fornecedores_lista = $pdo->query("SELECT id, nome_fantasia FROM fornecedores WH
 if (!isset($_GET['id'])) { die("Chamado não especificado."); }
 $id = $_GET['id'];
 
-// --- LÓGICA DE ATUALIZAÇÃO ---
+// --- NOVO: LÓGICA DE ADICIONAR ITEM AO ESTOQUE ---
+if (isset($_POST['adicionar_item_estoque'])) {
+    $item_id = $_POST['item_id'];
+    $qtd_usada = $_POST['qtd_usada'];
+
+    $st = $pdo->prepare("SELECT nome, quantidade, valor_unitario FROM itens_estoque WHERE id = ?");
+    $st->execute([$item_id]);
+    $item_info = $st->fetch();
+
+    if ($item_info && $item_info['quantidade'] >= $qtd_usada) {
+        $pdo->beginTransaction();
+        try {
+            // Registra o uso
+            $ins = $pdo->prepare("INSERT INTO chamados_itens (chamado_id, item_id, quantidade, valor_unitario_na_epoca) VALUES (?, ?, ?, ?)");
+            $ins->execute([$id, $item_id, $qtd_usada, $item_info['valor_unitario']]);
+
+            // Subtrai do estoque
+            $upd = $pdo->prepare("UPDATE itens_estoque SET quantidade = quantidade - ? WHERE id = ?");
+            $upd->execute([$qtd_usada, $item_id]);
+
+            // Registra no histórico do chamado
+            $msg_estoque = "Peça utilizada: " . $qtd_usada . "x " . $item_info['nome'];
+            $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento) VALUES (?, ?, ?, ?)")
+                ->execute([$id, $_SESSION['usuario_nome'], $msg_estoque, 'Em Atendimento']);
+
+            $pdo->commit();
+            echo "<script>window.location.href='index.php?p=tratar_chamado&id=$id&sucesso_item=1';</script>";
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            die("Erro ao baixar estoque: " . $e->getMessage());
+        }
+    } else {
+        echo "<script>alert('Estoque insuficiente para este item!');</script>";
+    }
+}
+
+// --- LÓGICA DE ATUALIZAÇÃO DO CHAMADO (MANTIDA) ---
 if (isset($_POST['atualizar_chamado'])) {
     try {
         $anotacao = $_POST['descricao_solucao']; 
@@ -41,7 +78,6 @@ if (isset($_POST['atualizar_chamado'])) {
         $data_atual = date('Y-m-d H:i:s');
         $data_conclusao = ($status == 'Concluído') ? $data_atual : null;
 
-        // Inicia Transação para garantir que tudo salve ou nada salve
         $pdo->beginTransaction();
 
         $sql = "UPDATE chamados SET 
@@ -56,7 +92,6 @@ if (isset($_POST['atualizar_chamado'])) {
             $nota_fornecedor, $fornecedor_id, $tecnico_externo, $id
         ]);
 
-        // Tratar Upload de Fotos e Histórico
         if (!empty($_FILES['foto_conclusao']['name'][0])) {
             foreach ($_FILES['foto_conclusao']['name'] as $key => $name) {
                 if ($_FILES['foto_conclusao']['error'][$key] == 0) {
@@ -64,18 +99,15 @@ if (isset($_POST['atualizar_chamado'])) {
                     $foto_nome = "HIST_" . $id . "_" . time() . "_" . $key . "." . $ext;
                     
                     if (move_uploaded_file($_FILES['foto_conclusao']['tmp_name'][$key], "uploads/" . $foto_nome)) {
-                        // Se for a primeira foto e estiver concluindo, salva na capa do chamado
                         if ($key === 0 && $status == 'Concluído') {
                             $pdo->prepare("UPDATE chamados SET foto_conclusao = ? WHERE id = ?")->execute([$foto_nome, $id]);
                         }
-                        // Registra no histórico (Garantindo que a coluna foto_historico existe)
                         $sql_hist = "INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, ?, ?, ?, ?)";
                         $pdo->prepare($sql_hist)->execute([$id, $tecnico, ($key === 0 ? $anotacao : "Anexo Adicional"), $status, $foto_nome, $data_atual]);
                     }
                 }
             }
         } else {
-            // Se não houver fotos, apenas registra o texto no histórico
             if (!empty($anotacao)) {
                 $sql_hist = "INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, data_registro) VALUES (?, ?, ?, ?, ?)";
                 $pdo->prepare($sql_hist)->execute([$id, $tecnico, $anotacao, $status, $data_atual]);
@@ -85,7 +117,6 @@ if (isset($_POST['atualizar_chamado'])) {
         $pdo->commit();
         echo "<script>window.location.href='index.php?p=tratar_chamado&id=$id&sucesso=1';</script>";
         exit;
-
     } catch (Exception $e) {
         $pdo->rollBack();
         die("<div class='alert alert-danger'>ERRO TÉCNICO: " . $e->getMessage() . "</div>");
@@ -108,6 +139,9 @@ $logs = $logs->fetchAll();
     <?php if(isset($_GET['sucesso'])): ?>
         <div class="alert alert-success shadow-sm border-0"><i class="bi bi-check-circle-fill me-2"></i> Atualização salva com sucesso!</div>
     <?php endif; ?>
+    <?php if(isset($_GET['sucesso_item'])): ?>
+        <div class="alert alert-primary shadow-sm border-0"><i class="bi bi-box-seam me-2"></i> Peça adicionada e estoque atualizado!</div>
+    <?php endif; ?>
 
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
@@ -121,7 +155,7 @@ $logs = $logs->fetchAll();
         <div class="col-md-5">
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-dark text-white fw-bold small">CRONOLOGIA DO ATENDIMENTO</div>
-                <div class="card-body" style="max-height: 700px; overflow-y: auto;">
+                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
                     <?php foreach($logs as $l): ?>
                         <div class="border-start border-3 border-primary ps-3 pb-3 mb-3 position-relative text-dark">
                             <i class="bi bi-circle-fill text-primary position-absolute" style="left: -9px; top: 0; font-size: 0.8rem;"></i>
@@ -135,6 +169,60 @@ $logs = $logs->fetchAll();
                             <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-primary text-white fw-bold small">PEÇAS E MATERIAIS DO ESTOQUE</div>
+                <div class="card-body">
+                    <form method="POST" class="row g-2 align-items-end mb-3">
+                        <div class="col-8">
+                            <label class="small fw-bold">Item do Estoque</label>
+                            <select name="item_id" class="form-select form-select-sm" required>
+                                <option value="">-- Selecione a peça --</option>
+                                <?php 
+                                $itens_estoque = $pdo->query("SELECT * FROM itens_estoque WHERE quantidade > 0 ORDER BY nome ASC")->fetchAll();
+                                foreach($itens_estoque as $it): ?>
+                                    <option value="<?= $it['id'] ?>"><?= $it['nome'] ?> (Dispo: <?= $it['quantidade'] ?>)</option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-4">
+                            <label class="small fw-bold">Qtd</label>
+                            <div class="input-group input-group-sm">
+                                <input type="number" name="qtd_usada" class="form-control" value="1" min="1" required>
+                                <button type="submit" name="adicionar_item_estoque" class="btn btn-primary"><i class="bi bi-plus-lg"></i></button>
+                            </div>
+                        </div>
+                    </form>
+                    
+                    <table class="table table-sm table-bordered small">
+                        <thead class="table-light">
+                            <tr><th>Peça</th><th class="text-center">Qtd</th><th class="text-end">Custo</th></tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            $usados = $pdo->prepare("SELECT ci.*, i.nome FROM chamados_itens ci JOIN itens_estoque i ON ci.item_id = i.id WHERE ci.chamado_id = ?");
+                            $usados->execute([$id]);
+                            $itens_usados = $usados->fetchAll();
+                            $total_materiais = 0;
+                            foreach($itens_usados as $u):
+                                $sub = $u['quantidade'] * $u['valor_unitario_na_epoca'];
+                                $total_materiais += $sub;
+                            ?>
+                            <tr>
+                                <td><?= $u['nome'] ?></td>
+                                <td class="text-center"><?= $u['quantidade'] ?></td>
+                                <td class="text-end">R$ <?= number_format($sub, 2, ',', '.') ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                        <?php if($total_materiais > 0): ?>
+                        <tfoot>
+                            <tr class="table-warning fw-bold"><td colspan="2">Total Materiais</td><td class="text-end">R$ <?= number_format($total_materiais, 2, ',', '.') ?></td></tr>
+                        </tfoot>
+                        <?php endif; ?>
+                    </table>
                 </div>
             </div>
         </div>
