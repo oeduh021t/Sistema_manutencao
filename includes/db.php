@@ -1,8 +1,8 @@
 <?php
 $host = 'localhost'; // Ou o IP do servidor se for externo
 $db   = 'sistema_manutencao';
-$user = 'admin';
-$pass = '123';
+$user = 'manutencao';
+$pass = '@TiHmdl#2007$';
 $sgbd = 'mysql';
 
 try {
