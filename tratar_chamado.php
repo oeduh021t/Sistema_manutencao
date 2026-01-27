@@ -23,7 +23,7 @@ $fornecedores_lista = $pdo->query("SELECT id, nome_fantasia FROM fornecedores WH
 if (!isset($_GET['id'])) { die("Chamado não especificado."); }
 $id = $_GET['id'];
 
-// --- NOVO: LÓGICA DE ADICIONAR ITEM AO ESTOQUE ---
+// --- LÓGICA DE ADICIONAR ITEM AO ESTOQUE ---
 if (isset($_POST['adicionar_item_estoque'])) {
     $item_id = $_POST['item_id'];
     $qtd_usada = $_POST['qtd_usada'];
@@ -35,15 +35,12 @@ if (isset($_POST['adicionar_item_estoque'])) {
     if ($item_info && $item_info['quantidade'] >= $qtd_usada) {
         $pdo->beginTransaction();
         try {
-            // Registra o uso
             $ins = $pdo->prepare("INSERT INTO chamados_itens (chamado_id, item_id, quantidade, valor_unitario_na_epoca) VALUES (?, ?, ?, ?)");
             $ins->execute([$id, $item_id, $qtd_usada, $item_info['valor_unitario']]);
 
-            // Subtrai do estoque
             $upd = $pdo->prepare("UPDATE itens_estoque SET quantidade = quantidade - ? WHERE id = ?");
             $upd->execute([$qtd_usada, $item_id]);
 
-            // Registra no histórico do chamado
             $msg_estoque = "Peça utilizada: " . $qtd_usada . "x " . $item_info['nome'];
             $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento) VALUES (?, ?, ?, ?)")
                 ->execute([$id, $_SESSION['usuario_nome'], $msg_estoque, 'Em Atendimento']);
@@ -60,7 +57,7 @@ if (isset($_POST['adicionar_item_estoque'])) {
     }
 }
 
-// --- LÓGICA DE ATUALIZAÇÃO DO CHAMADO (MANTIDA) ---
+// --- LÓGICA DE ATUALIZAÇÃO DO CHAMADO (EDITADO PARA LIMPAR CAMPO) ---
 if (isset($_POST['atualizar_chamado'])) {
     try {
         $anotacao = $_POST['descricao_solucao']; 
@@ -80,14 +77,15 @@ if (isset($_POST['atualizar_chamado'])) {
 
         $pdo->beginTransaction();
 
+        // EDITADO: Removi 'descricao_solucao = ?' do UPDATE para que o campo não fique acumulando texto antigo na tabela principal
         $sql = "UPDATE chamados SET 
-                descricao_solucao = ?, status = ?, data_conclusao = ?, tecnico_responsavel = ?,
+                status = ?, data_conclusao = ?, tecnico_responsavel = ?,
                 nf_referencia = ?, custo_servico = ?, causa_raiz = ?,
                 tipo_atendimento = ?, nota_fornecedor = ?, fornecedor_id = ?, tecnico_externo_nome = ?
                 WHERE id = ?";
         
         $pdo->prepare($sql)->execute([
-            $anotacao, $status, $data_conclusao, $tecnico, 
+            $status, $data_conclusao, $tecnico, 
             $nf, $custo, $causa_raiz, $tipo_atendimento, 
             $nota_fornecedor, $fornecedor_id, $tecnico_externo, $id
         ]);
@@ -143,7 +141,7 @@ $logs = $logs->fetchAll();
         <div class="alert alert-primary shadow-sm border-0"><i class="bi bi-box-seam me-2"></i> Peça adicionada e estoque atualizado!</div>
     <?php endif; ?>
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 text-dark">
         <div>
             <h3 class="fw-bold mb-0 text-dark"><i class="bi bi-wrench-adjustable text-primary"></i> Atendimento #<?= $id ?></h3>
             <span class="badge bg-light text-dark border mt-1"><i class="bi bi-geo-alt text-danger"></i> <?= htmlspecialchars($caminho_setor) ?></span>
@@ -154,14 +152,14 @@ $logs = $logs->fetchAll();
     <div class="row">
         <div class="col-md-5">
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-dark text-white fw-bold small">CRONOLOGIA DO ATENDIMENTO</div>
-                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                <div class="card-header bg-dark text-white fw-bold small text-uppercase">Cronologia do Atendimento</div>
+                <div class="card-body" style="max-height: 500px; overflow-y: auto;">
                     <?php foreach($logs as $l): ?>
                         <div class="border-start border-3 border-primary ps-3 pb-3 mb-3 position-relative text-dark">
                             <i class="bi bi-circle-fill text-primary position-absolute" style="left: -9px; top: 0; font-size: 0.8rem;"></i>
                             <small class="text-muted d-block"><?= date('d/m H:i', strtotime($l['data_registro'])) ?> - <b><?= $l['status_momento'] ?></b></small>
                             <div class="fw-bold small"><?= $l['tecnico_nome'] ?></div>
-                            <div class="bg-light p-2 rounded small border mt-1"><?= nl2br(htmlspecialchars($l['texto_historico'])) ?></div>
+                            <div class="bg-light p-2 rounded small border mt-1 text-dark"><?= nl2br(htmlspecialchars($l['texto_historico'])) ?></div>
                             <?php if(!empty($l['foto_historico'])): ?>
                                 <a href="uploads/<?= $l['foto_historico'] ?>" target="_blank">
                                     <img src="uploads/<?= $l['foto_historico'] ?>" class="img-fluid rounded border mt-2 shadow-sm" style="max-height: 100px;">
@@ -173,22 +171,22 @@ $logs = $logs->fetchAll();
             </div>
 
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-primary text-white fw-bold small">PEÇAS E MATERIAIS DO ESTOQUE</div>
+                <div class="card-header bg-primary text-white fw-bold small text-uppercase">Peças e Materiais</div>
                 <div class="card-body">
                     <form method="POST" class="row g-2 align-items-end mb-3">
                         <div class="col-8">
-                            <label class="small fw-bold">Item do Estoque</label>
+                            <label class="small fw-bold text-dark">Item do Estoque</label>
                             <select name="item_id" class="form-select form-select-sm" required>
                                 <option value="">-- Selecione a peça --</option>
                                 <?php 
                                 $itens_estoque = $pdo->query("SELECT * FROM itens_estoque WHERE quantidade > 0 ORDER BY nome ASC")->fetchAll();
                                 foreach($itens_estoque as $it): ?>
-                                    <option value="<?= $it['id'] ?>"><?= $it['nome'] ?> (Dispo: <?= $it['quantidade'] ?>)</option>
+                                    <option value="<?= $it['id'] ?>"><?= $it['nome'] ?> (Disp: <?= $it['quantidade'] ?>)</option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="col-4">
-                            <label class="small fw-bold">Qtd</label>
+                            <label class="small fw-bold text-dark">Qtd</label>
                             <div class="input-group input-group-sm">
                                 <input type="number" name="qtd_usada" class="form-control" value="1" min="1" required>
                                 <button type="submit" name="adicionar_item_estoque" class="btn btn-primary"><i class="bi bi-plus-lg"></i></button>
@@ -196,7 +194,7 @@ $logs = $logs->fetchAll();
                         </div>
                     </form>
                     
-                    <table class="table table-sm table-bordered small">
+                    <table class="table table-sm table-bordered small text-dark">
                         <thead class="table-light">
                             <tr><th>Peça</th><th class="text-center">Qtd</th><th class="text-end">Custo</th></tr>
                         </thead>
@@ -219,7 +217,7 @@ $logs = $logs->fetchAll();
                         </tbody>
                         <?php if($total_materiais > 0): ?>
                         <tfoot>
-                            <tr class="table-warning fw-bold"><td colspan="2">Total Materiais</td><td class="text-end">R$ <?= number_format($total_materiais, 2, ',', '.') ?></td></tr>
+                            <tr class="table-warning fw-bold text-dark"><td colspan="2">Total Materiais</td><td class="text-end">R$ <?= number_format($total_materiais, 2, ',', '.') ?></td></tr>
                         </tfoot>
                         <?php endif; ?>
                     </table>
@@ -229,7 +227,7 @@ $logs = $logs->fetchAll();
 
         <div class="col-md-7">
             <form method="POST" enctype="multipart/form-data" class="card shadow-sm border-0">
-                <div class="card-header bg-success text-white fw-bold small">TRATATIVA TÉCNICA E CONCLUSÃO</div>
+                <div class="card-header bg-success text-white fw-bold small text-uppercase">Tratativa Técnica e Conclusão</div>
                 <div class="card-body text-dark">
                     
                     <div class="mb-4 text-center">
@@ -288,8 +286,8 @@ $logs = $logs->fetchAll();
                         </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small text-muted">Causa Raiz da Falha</label>
+                    <div class="mb-3 text-dark">
+                        <label class="form-label fw-bold small text-muted text-uppercase">Causa Raiz da Falha</label>
                         <select name="causa_raiz" class="form-select" required>
                             <option value="Desgaste Natural" <?= $chamado['causa_raiz'] == 'Desgaste Natural' ? 'selected' : '' ?>>Desgaste Natural</option>
                             <option value="Mau Uso" <?= $chamado['causa_raiz'] == 'Mau Uso' ? 'selected' : '' ?>>Mau Uso / Queda</option>
@@ -299,12 +297,13 @@ $logs = $logs->fetchAll();
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold text-primary">Descrição da Solução Aplicada</label>
-                        <textarea name="descricao_solucao" class="form-control border-primary" rows="4" required><?= $chamado['descricao_solucao'] ?></textarea>
+                        <label class="form-label fw-bold text-primary text-uppercase">Descrição da Nova Atualização</label>
+                        <textarea name="descricao_solucao" class="form-control border-primary" rows="4" placeholder="Descreva aqui o que foi feito nesta visita/etapa..." required></textarea>
+                        <small class="text-muted">A anotação será salva na cronologia ao lado.</small>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold small">Anexar Fotos / Evidências (Múltiplas)</label>
+                        <label class="form-label fw-bold small text-dark text-uppercase">Anexar Fotos / Evidências (Múltiplas)</label>
                         <input type="file" name="foto_conclusao[]" class="form-control" multiple>
                     </div>
                 </div>
