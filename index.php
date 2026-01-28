@@ -1,11 +1,20 @@
 <?php
 session_start();
+
+// --- LÓGICA DE REDIRECIONAMENTO PÓS-LOGIN (P/ QR CODE) ---
 if (!isset($_SESSION['usuario_id'])) {
+    // Se o usuário tentar acessar uma página específica sem estar logado
+    if (isset($_GET['p'])) {
+        // Captura a URL completa com todos os parâmetros (p=chamados&setor_id=X...)
+        $url_tentada = "index.php?" . $_SERVER['QUERY_STRING'];
+        $_SESSION['url_redirecionamento'] = $url_tentada;
+    }
+    
     header("Location: login.php");
     exit;
 }
-include 'includes/db.php';
 
+include 'includes/db.php';
 $nivel = $_SESSION['usuario_nivel'];
 ?>
 <!DOCTYPE html>
@@ -34,11 +43,10 @@ $nivel = $_SESSION['usuario_nivel'];
 <body>
 
 <nav id="sidebar">
-<div class="sidebar-header d-flex align-items-center">
+    <div class="sidebar-header d-flex align-items-center">
         <i class="bi bi-building text-primary me-2 fs-4"></i>
         GESTÃO HMDL
     </div>
-
 
     <div class="user-panel text-white">
         <small class="text-muted d-block" style="font-size: 0.65rem;">SESSÃO ATIVA</small>
@@ -49,7 +57,7 @@ $nivel = $_SESSION['usuario_nivel'];
     <ul class="nav flex-column flex-grow-1 mt-2">
         
         <?php if ($nivel !== 'usuario'): ?>
-        <li class="nav-item text-white">
+        <li class="nav-item">
             <a href="index.php?p=dashboard" class="nav-link <?= (isset($_GET['p']) && $_GET['p'] == 'dashboard') ? 'active' : '' ?>">
                 <i class="bi bi-speedometer2 text-success"></i> Dashboard
             </a>
@@ -57,7 +65,7 @@ $nivel = $_SESSION['usuario_nivel'];
         <?php endif; ?>
 
         <?php if (in_array($nivel, ['admin', 'coordenador'])): ?>
-        <li class="nav-item text-white">
+        <li class="nav-item">
             <a class="nav-link d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#collapseCadastros">
                 <span><i class="bi bi-plus-square-fill text-primary"></i> Cadastros</span>
                 <i class="bi bi-chevron-down small"></i>
@@ -74,14 +82,14 @@ $nivel = $_SESSION['usuario_nivel'];
         </li>
         <?php endif; ?>
 
-        <li class="nav-item text-white">
+        <li class="nav-item">
             <a href="index.php?p=chamados" class="nav-link <?= (isset($_GET['p']) && $_GET['p'] == 'chamados') ? 'active' : '' ?>">
                 <i class="bi bi-ticket-perforated text-warning"></i> Chamados / OS
             </a>
         </li>
 
         <?php if (in_array($nivel, ['admin', 'coordenador'])): ?>
-        <li class="nav-item text-white">
+        <li class="nav-item">
             <a class="nav-link d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#collapseAuditoria">
                 <span><i class="bi bi-file-earmark-check-fill text-info"></i> Relatórios & Auditoria</span>
                 <i class="bi bi-chevron-down small"></i>
@@ -101,7 +109,7 @@ $nivel = $_SESSION['usuario_nivel'];
         <hr>
 
         <?php if ($nivel !== 'usuario'): ?>
-        <li class="nav-item text-white">
+        <li class="nav-item">
             <a href="index.php?p=relatorios" class="nav-link fw-bold <?= (isset($_GET['p']) && $_GET['p'] == 'relatorios') ? 'active' : '' ?>" style="color: #6366f1;">
                 <i class="bi bi-cpu-fill" style="color: #6366f1;"></i> BI - Inteligência
             </a>
@@ -109,7 +117,7 @@ $nivel = $_SESSION['usuario_nivel'];
         <?php endif; ?>
 
         <?php if ($nivel == 'admin'): ?>
-        <li class="nav-item text-white">
+        <li class="nav-item">
             <a href="index.php?p=usuarios" class="nav-link <?= (isset($_GET['p']) && $_GET['p'] == 'usuarios') ? 'active' : '' ?>">
                 <i class="bi bi-people-fill text-light"></i> Gestão de Usuários
             </a>
@@ -135,8 +143,6 @@ $nivel = $_SESSION['usuario_nivel'];
         $default_page = ($nivel === 'usuario') ? 'chamados' : 'dashboard';
         $pagina = isset($_GET['p']) ? $_GET['p'] : $default_page;
 
-        // --- SISTEMA DE PERMISSÕES ATUALIZADO ---
-        $paginas_gerenciais = ['equipamentos', 'setores', 'tipos_equipamentos', 'fornecedores', 'relatorios', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos'];
         $paginas_proibidas_usuario = ['dashboard', 'equipamentos', 'setores', 'usuarios', 'tratar_chamado', 'relatorios', 'fornecedores', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos'];
 
         if ($nivel === 'usuario' && in_array($pagina, $paginas_proibidas_usuario)) {
@@ -157,7 +163,7 @@ $nivel = $_SESSION['usuario_nivel'];
             if (file_exists($arquivo)) {
                 include($arquivo);
             } else {
-                echo "<div class='card p-5 text-center shadow-sm border-0'>
+                echo "<div class='card p-5 text-center shadow-sm border-0 text-dark'>
                         <i class='bi bi-folder-x display-1 text-muted'></i>
                         <h4 class='mt-3'>Módulo não encontrado</h4>
                         <p class='text-muted small'>O arquivo <b>$arquivo</b> não foi localizado no servidor.</p>

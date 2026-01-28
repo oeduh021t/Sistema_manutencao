@@ -1,8 +1,8 @@
 <?php
 include_once 'includes/db.php';
 
-// Proteção: Apenas admin pode editar
-if ($_SESSION['usuario_nivel'] !== 'admin') {
+// CORREÇÃO: Permitir admin OU coordenador
+if (!isset($_SESSION['usuario_nivel']) || !in_array($_SESSION['usuario_nivel'], ['admin', 'coordenador'])) {
     header("Location: index.php?p=equipamentos");
     exit;
 }
@@ -60,7 +60,7 @@ $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetc
             <h5 class="mb-0 fw-bold"><i class="bi bi-pencil-square me-2"></i>Editar Ativo: <?= htmlspecialchars($eq['nome']) ?></h5>
             <a href="index.php?p=equipamentos" class="btn btn-sm btn-light fw-bold shadow-sm">Voltar para Lista</a>
         </div>
-        <div class="card-body p-4">
+        <div class="card-body p-4 text-dark">
             <form method="POST" enctype="multipart/form-data">
                 
                 <div class="mb-3">
@@ -68,7 +68,7 @@ $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetc
                     <input type="text" name="nome" class="form-control form-control-lg" value="<?= htmlspecialchars($eq['nome']) ?>" placeholder="Ex: Ar Condicionado Split" required>
                 </div>
 
-                <div class="row">
+                <div class="row text-dark">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Nº de Série</label>
                         <input type="text" name="num_serie" class="form-control" value="<?= htmlspecialchars($eq['num_serie']) ?>" placeholder="Ex: SN123456">
@@ -79,7 +79,7 @@ $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetc
                     </div>
                 </div>
 
-                <div class="row">
+                <div class="row text-dark">
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">Tipo de Equipamento</label>
                         <select name="tipo_id" class="form-select" required>
@@ -129,7 +129,7 @@ $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetc
                 </div>
 
                 <div class="mb-3 border-top pt-4 mt-2">
-                    <label class="form-label fw-bold d-block">Foto do Equipamento</label>
+                    <label class="form-label fw-bold d-block text-dark">Foto do Equipamento</label>
                     <div class="row align-items-center">
                         <div class="col-md-3">
                             <?php if($eq['foto_equipamento']): ?>
@@ -138,9 +138,9 @@ $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetc
                                 <div class="bg-light border rounded text-center py-4 text-muted mb-2">Sem foto cadastrada</div>
                             <?php endif; ?>
                         </div>
-                        <div class="col-md-9">
+                        <div class="col-md-9 text-dark">
                             <input type="file" name="foto" class="form-control mb-2" accept="image/*">
-                            <small class="text-muted"><i class="bi bi-info-circle me-1"></i> Selecione um novo arquivo se desejar substituir a foto atual por uma mais recente.</small>
+                            <small class="text-muted"><i class="bi bi-info-circle me-1"></i> Selecione um novo arquivo se desejar substituir a foto atual.</small>
                         </div>
                     </div>
                 </div>

@@ -44,7 +44,6 @@ if (isset($_POST['salvar_equipamento'])) {
     $setor_id = $_POST['setor_id'];
     $status_ini = $_POST['status_inicial'] ?? 'Ativo';
     
-    // Tratamento dos campos Opcionais de Preventiva
     $periodicidade = (!empty($_POST['periodicidade_preventiva'])) ? (int)$_POST['periodicidade_preventiva'] : 0;
     $ultima_prev = (!empty($_POST['data_ultima_preventiva'])) ? $_POST['data_ultima_preventiva'] : null;
 
@@ -58,7 +57,13 @@ if (isset($_POST['salvar_equipamento'])) {
     $stmt = $pdo->prepare("INSERT INTO equipamentos (patrimonio, num_serie, nome, tipo_id, setor_id, foto_equipamento, status, periodicidade_preventiva, data_ultima_preventiva) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([$patrimonio, $num_serie, $nome, $tipo_id, $setor_id, $foto_nome, $status_ini, $periodicidade, $ultima_prev]);
 
-    echo "<div class='alert alert-success mt-3 shadow-sm'>Equipamento cadastrado com sucesso!</div>";
+    // LÓGICA DE MANTER ABERTO:
+    if (isset($_POST['continuar_cadastrando'])) {
+        echo "<script>window.location.href='index.php?p=equipamentos&reabrir=1&last_tipo=$tipo_id&last_setor=$setor_id&last_status=$status_ini';</script>";
+    } else {
+        echo "<script>window.location.href='index.php?p=equipamentos&sucesso=1';</script>";
+    }
+    exit;
 }
 
 // 3. Buscar Equipamentos
@@ -72,11 +77,15 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4 mt-2">
-    <h2><i class="bi bi-pc-display text-primary"></i> Gestão de Ativos</h2>
-    <button class="btn btn-primary shadow" data-bs-toggle="modal" data-bs-target="#modalEquipamento">
-        <i class="bi bi-plus-circle"></i> Novo Ativo
+    <h2 class="text-dark"><i class="bi bi-pc-display text-primary"></i> Gestão de Ativos</h2>
+    <button class="btn btn-primary shadow fw-bold" data-bs-toggle="modal" data-bs-target="#modalEquipamento">
+        <i class="bi bi-plus-circle"></i> NOVO ATIVO
     </button>
 </div>
+
+<?php if(isset($_GET['sucesso'])): ?>
+    <div class="alert alert-success shadow-sm border-0">Equipamento cadastrado com sucesso!</div>
+<?php endif; ?>
 
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body bg-light rounded p-3">
@@ -95,8 +104,8 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
 <div class="card shadow-sm border-0">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-secondary">
+            <table class="table table-hover align-middle mb-0 text-dark">
+                <thead class="table-light text-secondary small fw-bold">
                     <tr>
                         <th class="ps-4">Ativo</th>
                         <th>Nº Série / Patrimônio</th>
@@ -154,7 +163,7 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
                                             <div style="border: 2px solid #000; padding: 10px; border-radius: 5px; background: #fff; display: inline-block;">
                                                 <small class="fw-bold d-block text-uppercase" style="font-size: 9px; margin-bottom: 5px;">HOSPITAL DOMINGOS LOURENÇO</small>
                                                 <img src="<?= gerarLinkQRCodeLocal($e['id']) ?>" style="width: 130px; height: 130px;">
-                                                <div class="fw-bold" style="font-size: 18px; margin-top: 5px; border-top: 1px solid #000;"><?= $e['patrimonio'] ?></div>
+                                                <div class="fw-bold text-dark" style="font-size: 18px; margin-top: 5px; border-top: 1px solid #000;"><?= $e['patrimonio'] ?></div>
                                                 <div style="font-size: 10px; color: #000; font-weight: bold;"><?= htmlspecialchars($e['nome']) ?></div>
                                             </div>
                                         </div>
@@ -178,7 +187,6 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
                                 <?php endif; ?>
                                 
                                 <a href="relatorio_equipamento.php?id=<?= $e['id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark" title="Relatório"><i class="bi bi-file-earmark-medical"></i></a>
-                                
                                 <a href="index.php?p=historico_equipamento&id=<?= $e['id'] ?>" class="btn btn-sm btn-info text-white" title="Histórico"><i class="bi bi-clock-history"></i></a>
                                 
                                 <?php if (in_array($nivel_logado, ['admin', 'coordenador'])): ?>
@@ -195,26 +203,26 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
     </div>
 </div>
 
-<div class="modal fade" id="modalEquipamento" tabindex="-1">
+<div class="modal fade text-dark" id="modalEquipamento" tabindex="-1">
     <div class="modal-dialog">
-        <form class="modal-content border-0 shadow" method="POST" enctype="multipart/form-data">
+        <form id="formNovoEquipamento" class="modal-content border-0 shadow" method="POST" enctype="multipart/form-data">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title"><i class="bi bi-tag"></i> Novo Ativo</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-tag"></i> Novo Ativo</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label fw-bold">Nome do Ativo</label>
-                    <input type="text" name="nome" class="form-control" placeholder="Ex: Cadeira de Rodas, Ar Condicionado" required>
+                    <input type="text" name="nome" class="form-control" placeholder="Ex: Monitor Multiparamétrico" required autofocus>
                 </div>
                 
                 <div class="row">
                     <div class="col-md-6 mb-3"><label class="form-label fw-bold">Nº de Série</label><input type="text" name="num_serie" class="form-control"></div>
-                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Patrimônio</label><input type="text" name="patrimonio" class="form-control" required></div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold text-danger">Patrimônio</label><input type="text" name="patrimonio" class="form-control" required></div>
                 </div>
 
                 <div class="p-3 bg-light border rounded mb-3">
-                    <h6 class="text-muted fw-bold small mb-3 text-uppercase"><i class="bi bi-calendar-check"></i> Manutenção Preventiva (Opcional)</h6>
+                    <h6 class="text-muted fw-bold small mb-3 text-uppercase"><i class="bi bi-calendar-check text-primary"></i> Manutenção Preventiva (Opcional)</h6>
                     <div class="row">
                         <div class="col-md-6">
                             <label class="form-label small fw-bold">Dias p/ revisão</label>
@@ -232,24 +240,35 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
                         <label class="form-label fw-bold">Tipo</label>
                         <select name="tipo_id" class="form-select" required>
                             <option value="">-- Selecione --</option>
-                            <?php $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetchAll();
-                                  foreach($tipos as $t) echo "<option value='{$t['id']}'>{$t['nome']}</option>"; ?>
+                            <?php 
+                            $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetchAll();
+                            $last_tipo = $_GET['last_tipo'] ?? '';
+                            foreach($tipos as $t) {
+                                $sel = ($t['id'] == $last_tipo) ? 'selected' : '';
+                                echo "<option value='{$t['id']}' $sel>{$t['nome']}</option>";
+                            }
+                            ?>
                         </select>
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Status Inicial</label>
                         <select name="status_inicial" class="form-select">
-                            <option value="Ativo">Ativo</option>
-                            <option value="Reserva" selected>Reserva</option>
+                            <?php $last_status = $_GET['last_status'] ?? 'Reserva'; ?>
+                            <option value="Ativo" <?= $last_status == 'Ativo' ? 'selected' : '' ?>>Ativo</option>
+                            <option value="Reserva" <?= $last_status == 'Reserva' ? 'selected' : '' ?>>Reserva</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Localização</label>
+                    <label class="form-label fw-bold text-primary">Localização</label>
                     <select name="setor_id" class="form-select" required>
-                        <?php foreach ($setores_mapa as $sid => $s): ?>
-                            <option value="<?= $sid ?>"><?= getCaminhoCompletoSelect($sid, $setores_mapa) ?></option>
+                        <?php 
+                        $last_setor = $_GET['last_setor'] ?? '';
+                        foreach ($setores_mapa as $sid => $s): 
+                            $sel = ($sid == $last_setor) ? 'selected' : '';
+                        ?>
+                            <option value="<?= $sid ?>" <?= $sel ?>><?= getCaminhoCompletoSelect($sid, $setores_mapa) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -259,19 +278,43 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
                     <input type="file" name="foto" class="form-control" accept="image/*">
                 </div>
             </div>
-            <div class="modal-footer bg-light">
-                <button type="submit" name="salvar_equipamento" class="btn btn-primary w-100 fw-bold">SALVAR ATIVO</button>
+            <div class="modal-footer bg-light d-flex justify-content-between">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="manter_aberto" <?= isset($_GET['reabrir']) ? 'checked' : '' ?>>
+                    <label class="form-check-label small fw-bold" for="manter_aberto">Manter janela aberta</label>
+                </div>
+                <button type="submit" name="salvar_equipamento" class="btn btn-primary px-4 fw-bold shadow">SALVAR ATIVO</button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
+// Lógica de Reabertura Automática do Modal
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('reabrir') === '1') {
+        var myModal = new bootstrap.Modal(document.getElementById('modalEquipamento'));
+        myModal.show();
+    }
+
+    const form = document.getElementById('formNovoEquipamento');
+    form.addEventListener('submit', function() {
+        if (document.getElementById('manter_aberto').checked) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'continuar_cadastrando';
+            input.value = '1';
+            this.appendChild(input);
+        }
+    });
+});
+
 function imprimirEtiqueta(divId) {
     var conteudo = document.getElementById(divId).innerHTML;
     var win = window.open('', '', 'height=500,width=500');
     win.document.write('<html><head><title>Imprimir</title>');
-    win.document.write('<style>body{display:flex; justify-content:center; align-items:center; height:100vh; margin:0;}</style>');
+    win.document.write('<style>body{display:flex; justify-content:center; align-items:center; height:100vh; margin:0; font-family: sans-serif;}</style>');
     win.document.write('</head><body>');
     win.document.write(conteudo);
     win.document.write('</body></html>');
