@@ -1,0 +1,5 @@
+<?php
+$host = 'seu_host';
+$db   = 'nome_do_banco';
+$user = 'seu_usuario';
+$pass = 'sua senha';

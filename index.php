@@ -34,9 +34,11 @@ $nivel = $_SESSION['usuario_nivel'];
 <body>
 
 <nav id="sidebar">
-    <div class="sidebar-header d-flex align-items-center">
-        <i class="bi bi-shield-check text-primary me-2"></i> MNT SISTEMA
+<div class="sidebar-header d-flex align-items-center">
+        <i class="bi bi-building text-primary me-2 fs-4"></i>
+        GESTÃO HMDL
     </div>
+
 
     <div class="user-panel text-white">
         <small class="text-muted d-block" style="font-size: 0.65rem;">SESSÃO ATIVA</small>
@@ -113,6 +115,12 @@ $nivel = $_SESSION['usuario_nivel'];
             </a>
         </li>
         <?php endif; ?>
+
+        <li class="nav-item border-top border-secondary">
+            <a href="index.php?p=trocar_senha" class="nav-link text-warning py-2">
+                <i class="bi bi-key-fill me-2"></i> Trocar Senha
+            </a>
+         </li>
 
         <li class="nav-item mt-auto border-top border-secondary">
             <a href="logout.php" class="nav-link text-danger py-3">
