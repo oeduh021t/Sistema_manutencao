@@ -1,13 +1,10 @@
-# Uploads de usuários
+# Configurações de banco de dados e senhas
+db_config.php
+includes/db.php
+
+# Pastas de uploads e imagens
 uploads/
 
-# Banco de dados
-*.sql
-
-# Arquivos de sessão / cache
+# Arquivos de log e sistema
 *.log
-cache/
-
-# Configurações sensíveis (se existirem)
-.env
-config/database.php
+.DS_Store
