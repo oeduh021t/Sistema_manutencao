@@ -76,6 +76,11 @@ $equipamentos = $stmt_eq->fetchAll();
 $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetchAll(PDO::FETCH_UNIQUE);
 ?>
 
+<style>
+    .qr-zoom-thumb { cursor: pointer; transition: transform 0.2s; }
+    .qr-zoom-thumb:hover { transform: scale(1.1); }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4 mt-2">
     <h2><i class="bi bi-pc-display text-primary"></i> Gestão de Ativos</h2>
     <div>
@@ -155,8 +160,8 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
                             <span class="badge <?= $status_class ?>"><?= $e['status'] ?></span>
                         </td>
                         <td>
-                            <a href="#" data-bs-toggle="modal" data-bs-target="#modalQR<?= $e['id'] ?>">
-                                <img src="<?= gerarLinkQRCodeLocal($e['id']) ?>" width="30" class="img-thumbnail shadow-sm">
+                            <a href="#" data-bs-toggle="modal" data-bs-target="#modalZoomQR" onclick="document.getElementById('imgZoomQR').src='<?= gerarLinkQRCodeLocal($e['id']) ?>'">
+                                <img src="<?= gerarLinkQRCodeLocal($e['id']) ?>" width="30" class="img-thumbnail shadow-sm qr-zoom-thumb">
                             </a>
                         </td>
                         <td class="text-end pe-4">
@@ -277,8 +282,25 @@ $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetch
     </div>
 </div>
 
+<div class="modal fade" id="modalZoomQR" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow text-dark">
+            <div class="modal-header bg-warning py-2">
+                <h6 class="modal-title fw-bold small"><i class="bi bi-qr-code-scan me-2"></i>QR Code do Ativo</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center p-4">
+                <img src="" id="imgZoomQR" class="img-fluid rounded shadow-sm" style="width: 100%; max-width: 250px;">
+                <p class="mt-3 mb-0 small text-muted fw-bold text-uppercase">Escaneie para abrir chamado</p>
+            </div>
+            <div class="modal-footer bg-light p-2">
+                <button type="button" class="btn btn-secondary btn-sm w-100 fw-bold" data-bs-dismiss="modal">FECHAR</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-// Scripts mantidos conforme original (Reabertura do modal, etc)
 document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('reabrir') === '1') {
