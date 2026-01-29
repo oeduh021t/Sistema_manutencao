@@ -58,14 +58,23 @@ if (isset($_POST['abrir_chamado'])) {
     }
     enviarNotificacaoTelegram($alerta_msg);
 
-    // Upload de Fotos mantido...
+    // --- UPLOAD DE FOTOS COM VÍNCULO NA CRONOLOGIA ---
     if (!empty($_FILES['fotos_abertura']['name'][0])) {
         foreach ($_FILES['fotos_abertura']['name'] as $key => $name) {
-            $ext = pathinfo($name, PATHINFO_EXTENSION);
-            $novo_nome = "CHAMADO_" . $chamado_id . "_" . time() . "_" . $key . "." . $ext;
-            if (move_uploaded_file($_FILES['fotos_abertura']['tmp_name'][$key], "uploads/" . $novo_nome)) {
-                if ($key === 0) {
-                    $pdo->prepare("UPDATE chamados SET foto_abertura = ? WHERE id = ?")->execute([$novo_nome, $chamado_id]);
+            if ($_FILES['fotos_abertura']['error'][$key] === 0) {
+                $ext = pathinfo($name, PATHINFO_EXTENSION);
+                $novo_nome = "CHAMADO_" . $chamado_id . "_" . time() . "_" . $key . "." . $ext;
+                
+                if (move_uploaded_file($_FILES['fotos_abertura']['tmp_name'][$key], "uploads/" . $novo_nome)) {
+                    // Salva a primeira foto como principal do chamado
+                    if ($key === 0) {
+                        $pdo->prepare("UPDATE chamados SET foto_abertura = ? WHERE id = ?")->execute([$novo_nome, $chamado_id]);
+                    }
+                    
+                    // CRIA O REGISTRO NA CRONOLOGIA PARA CADA FOTO
+                    // Assim a foto aparece na timeline do chamado
+                    $stmt_hist = $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico) VALUES (?, ?, ?, 'Aberto', ?)");
+                    $stmt_hist->execute([$chamado_id, 'Sistema', 'Evidência fotográfica anexada na abertura.', $novo_nome]);
                 }
             }
         }
@@ -74,7 +83,7 @@ if (isset($_POST['abrir_chamado'])) {
     exit;
 }
 
-// 3. Busca de chamados mantida...
+// 3. Busca de chamados mantida
 $sql_base = "SELECT c.*, e.patrimonio, e.nome as eq_nome, s.nome as setor_nome FROM chamados c LEFT JOIN equipamentos e ON c.equipamento_id = e.id LEFT JOIN setores s ON c.setor_id = s.id";
 $condicoes = [];
 if ($nivel_logado === 'usuario') { $condicoes[] = "c.usuario_id = ?"; $params[] = $usuario_id_logado; }
@@ -126,7 +135,7 @@ $chamados = $stmt_c->fetchAll();
     <div class="modal-dialog">
         <form class="modal-content border-0 shadow text-dark" method="POST" enctype="multipart/form-data">
             <div class="modal-header bg-warning">
-                <h5 class="modal-title fw-bold"><i class="bi bi- megaphone"></i> Nova Solicitação</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-megaphone"></i> Nova Solicitação</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -183,42 +192,27 @@ $chamados = $stmt_c->fetchAll();
 </div>
 
 <script>
-// Filtra a lista de equipamentos baseada no setor escolhido
 function filtrarEquipamentos() {
     const setorId = document.getElementById('setor_select').value;
     const equipSelect = document.getElementById('equipamento_select');
     const options = equipSelect.options;
     
-    let encontrou = false;
     for (let i = 0; i < options.length; i++) {
         const optSetorId = options[i].getAttribute('data-setor');
-        if (optSetorId === "todos" || optSetorId === setorId) {
-            options[i].style.display = "block";
-            encontrou = true;
-        } else {
-            options[i].style.display = "none";
-        }
+        options[i].style.display = (optSetorId === "todos" || optSetorId === setorId) ? "block" : "none";
     }
-    // Se mudar o setor, reseta o equipamento para não ficar um de outro setor selecionado por erro
     const urlParams = new URLSearchParams(window.location.search);
     if (!urlParams.has('equipamento_id')) {
         equipSelect.value = "";
     }
 }
 
-// LOGICA QR CODE: Abre o modal se houver ID na URL
 document.addEventListener("DOMContentLoaded", function() {
     const urlParams = new URLSearchParams(window.location.search);
-    
     if (urlParams.has('setor_id') || urlParams.has('equipamento_id')) {
-        // Abre o modal automaticamente
         var myModal = new bootstrap.Modal(document.getElementById('modalChamado'));
         myModal.show();
-        
-        // Executa o filtro de equipamentos imediatamente
         filtrarEquipamentos();
-
-        // Limpa a URL para não reabrir o modal em caso de F5
         if (window.history.replaceState) {
             const urlLimpa = window.location.protocol + "//" + window.location.host + window.location.pathname + "?p=chamados";
             window.history.replaceState({path: urlLimpa}, '', urlLimpa);
@@ -226,7 +220,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 
-// Auto-refresh de 30s apenas se o modal estiver fechado
 setInterval(function(){
     if(!document.querySelector('.modal.show')){
         window.location.reload();

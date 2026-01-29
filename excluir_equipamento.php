@@ -3,11 +3,10 @@
 include_once 'includes/db.php';
 
 // 1. Segurança: Verifica se é admin (A sessão já vem do index)
-if (!isset($_SESSION['usuario_nivel']) || $_SESSION['usuario_nivel'] !== 'admin') {
-    echo "<script>window.location.href='index.php?p=equipamentos';</script>";
+if (!isset($_SESSION['usuario_nivel']) || !in_array($_SESSION['usuario_nivel'], ['admin', 'coordenador'])) {
+    header("Location: login.php?erro=permissao");
     exit;
 }
-
 if (isset($_GET['id'])) {
     $id = $_GET['id'];
 
