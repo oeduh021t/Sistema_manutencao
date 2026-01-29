@@ -4,18 +4,27 @@ $id = $_GET['id'] ?? null;
 
 if (!$id) { die("OS não encontrada."); }
 
-// 1. Busca dados principais (incluindo os novos campos de tipo e nota)
+// 1. CORREÇÃO: Usar LEFT JOIN para não "sumir" com chamados sem equipamento (Infra)
 $stmt = $pdo->prepare("
-    SELECT c.*, e.patrimonio, e.num_serie, e.nome as eq_nome, e.foto_equipamento, s.nome as setor_nome
+    SELECT 
+        c.*, 
+        e.patrimonio, 
+        e.num_serie, 
+        e.nome as eq_nome, 
+        e.foto_equipamento, 
+        s.nome as setor_nome
     FROM chamados c
-    JOIN equipamentos e ON c.equipamento_id = e.id
-    JOIN setores s ON e.setor_id = s.id
+    LEFT JOIN equipamentos e ON c.equipamento_id = e.id
+    LEFT JOIN setores s ON c.setor_id = s.id
     WHERE c.id = ?
 ");
 $stmt->execute([$id]);
 $c = $stmt->fetch();
 
-// 2. Busca fotos do histórico
+// Verificação de segurança
+if (!$c) { die("Erro: O chamado #$id não existe no banco de dados."); }
+
+// 2. Busca fotos do histórico (Mantido)
 $stmt_fotos = $pdo->prepare("SELECT foto_historico, status_momento FROM chamados_historico WHERE chamado_id = ? AND foto_historico IS NOT NULL");
 $stmt_fotos->execute([$id]);
 $fotos_historico = $stmt_fotos->fetchAll();
@@ -35,6 +44,7 @@ foreach ($fotos_historico as $f) {
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
+    <title>OS Nº <?= str_pad($c['id'], 6, "0", STR_PAD_LEFT) ?></title>
     <style>
         @page { size: A4; margin: 10mm; }
         body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #333; line-height: 1.4; }
@@ -59,7 +69,8 @@ foreach ($fotos_historico as $f) {
 <body>
 
 <div class="no-print" style="text-align:center; margin: 20px;">
-    <button onclick="window.print()" style="padding: 10px 20px; cursor:pointer; font-weight:bold; background: #28a745; color:#fff; border:none; border-radius:5px;">GERAR DOCUMENTO FÍSICO (PDF)</button>
+    <button onclick="window.print()" style="padding: 10px 20px; cursor:pointer; font-weight:bold; background: #28a745; color:#fff; border:none; border-radius:5px;">IMPRIMIR ORDEM DE SERVIÇO</button>
+    <button onclick="window.close()" style="padding: 10px 20px; cursor:pointer; font-weight:bold; background: #6c757d; color:#fff; border:none; border-radius:5px;">FECHAR</button>
 </div>
 
 <div class="page">
@@ -73,20 +84,22 @@ foreach ($fotos_historico as $f) {
 
     <table class="info-table">
         <tr>
-            <td colspan="2"><strong>EQUIPAMENTO:</strong> <?= htmlspecialchars($c['eq_nome']) ?></td>
+            <td colspan="2"><strong>EQUIPAMENTO:</strong> <?= htmlspecialchars($c['eq_nome'] ?? 'Manutenção de Infraestrutura / Predial') ?></td>
             <td rowspan="3" style="width: 120px; text-align:center; vertical-align: middle;">
                 <?php if($c['foto_equipamento']): ?>
                     <img src="uploads/<?= $c['foto_equipamento'] ?>" style="max-width: 100px; max-height: 80px;">
+                <?php else: ?>
+                    <i class="bi bi-tools" style="font-size: 40px; color: #ccc;"></i>
                 <?php endif; ?>
             </td>
         </tr>
         <tr>
-            <td><strong>PATRIMÔNIO:</strong> <?= htmlspecialchars($c['patrimonio']) ?></td>
-            <td><strong>Nº SÉRIE:</strong> <?= htmlspecialchars($c['num_serie']) ?></td>
+            <td><strong>PATRIMÔNIO:</strong> <?= htmlspecialchars($c['patrimonio'] ?? 'N/A') ?></td>
+            <td><strong>Nº SÉRIE:</strong> <?= htmlspecialchars($c['num_serie'] ?? 'N/A') ?></td>
         </tr>
         <tr>
-            <td><strong>LOCALIZAÇÃO:</strong> <?= htmlspecialchars($c['setor_nome']) ?></td>
-            <td><strong>TÉCNICO RESPONSÁVEL:</strong> <?= htmlspecialchars($c['tecnico_responsavel']) ?></td>
+            <td><strong>LOCALIZAÇÃO:</strong> <?= htmlspecialchars($c['setor_nome'] ?? 'Setor não identificado') ?></td>
+            <td><strong>TÉCNICO:</strong> <?= htmlspecialchars($c['tecnico_responsavel'] ?? 'Não atribuído') ?></td>
         </tr>
     </table>
 
@@ -98,19 +111,18 @@ foreach ($fotos_historico as $f) {
     <div class="section-title">2. Relatório de Execução Técnica</div>
     <div style="border: 1px solid #000; padding: 10px; min-height: 120px;">
         <strong>Procedimentos realizados:</strong><br>
-        <?= nl2br(htmlspecialchars($c['descricao_solucao'])) ?>
+        <?= nl2br(htmlspecialchars($c['descricao_solucao'] ?? 'Aguardando finalização do técnico.')) ?>
 
         <?php if($c['tipo_atendimento'] === 'Externo'): ?>
             <div style="margin-top: 15px; padding: 8px; background: #eee; border: 1px solid #ccc;">
-                <strong>DADOS DO PRESTADOR:</strong> <?= htmlspecialchars($c['empresa_terceirizada']) ?> | 
+                <strong>PRESTADOR:</strong> <?= htmlspecialchars($c['empresa_terceirizada']) ?> | 
                 <strong>NF:</strong> <?= htmlspecialchars($c['nf_referencia']) ?> | 
-                <strong>CUSTO:</strong> R$ <?= number_format($c['custo_servico'], 2, ',', '.') ?> |
-                <strong>AVALIAÇÃO:</strong> <?= $c['nota_fornecedor'] ?> Estrela(s)
+                <strong>CUSTO:</strong> R$ <?= number_format($c['custo_servico'], 2, ',', '.') ?>
             </div>
         <?php endif; ?>
     </div>
 
-    <div class="section-title">3. Galeria de Evidências (Antes e Depois)</div>
+    <div class="section-title">3. Galeria de Evidências</div>
     <div class="gallery-container">
         <?php if($c['foto_abertura']): ?>
             <div class="photo-card"><img src="uploads/<?= $c['foto_abertura'] ?>"><br>Início</div>
@@ -119,25 +131,14 @@ foreach ($fotos_historico as $f) {
             <div class="photo-card" style="border-color: #28a745;"><img src="uploads/<?= $c['foto_conclusao'] ?>"><br>Conclusão</div>
         <?php endif; ?>
         <?php foreach($fotos_conclusao_extras as $f): ?>
-            <div class="photo-card"><img src="uploads/<?= $f['foto_historico'] ?>"><br>Teste/Peça</div>
+            <div class="photo-card"><img src="uploads/<?= $f['foto_historico'] ?>"><br>Evidência</div>
         <?php endforeach; ?>
     </div>
 
-    <?php if($c['tipo_atendimento'] === 'Externo'): ?>
-    <div class="termo-juridico">
-        <strong>TERMO DE ENTREGA TÉCNICA E RESPONSABILIDADE:</strong><br>
-        O prestador acima identificado declara que realizou a manutenção corretiva/preventiva no equipamento descrito, utilizando peças adequadas e seguindo as normas técnicas vigentes. O equipamento foi entregue ao Hospital Domingos Lourenço devidamente testado em todas as suas funções vitais, com calibração verificada (quando aplicável) e em perfeitas condições de uso clínico. O hospital reserva-se o direito de contestar o serviço em caso de vícios ocultos ou falha prematura das peças substituídas dentro do prazo legal de garantia.
-    </div>
-    <?php else: ?>
-    <div class="termo-juridico" style="text-align: center;">
-        <strong>DECLARAÇÃO:</strong> O setor de Engenharia Clínica declara que o equipamento foi reparado internamente e testado para retorno imediato ao uso operacional.
-    </div>
-    <?php endif; ?>
-
     <div class="assinaturas">
-        <div>Engenharia Clínica</div>
+        <div>Engenharia Clínica / Manutenção</div>
         <div><?= ($c['tipo_atendimento'] === 'Externo') ? 'Prestador de Serviço' : 'Técnico Executante' ?></div>
-        <div>Aceite do Setor (Enfermagem)</div>
+        <div>Aceite do Setor (Responsável)</div>
     </div>
 </div>
 

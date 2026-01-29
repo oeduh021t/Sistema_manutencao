@@ -146,8 +146,10 @@ function exibirLinhaSetor($id, $mapa, $nivel = 0) {
 <div class="container-fluid text-dark py-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="fw-bold mb-0 text-dark"><i class="bi bi-diagram-3 text-primary me-2"></i>Gestão de Setores</h2>
+        <a href="imprimir_massa.php?tipo=setores" target="_blank" class="btn btn-outline-dark shadow-sm fw-bold">
+            <i class="bi bi-printer"></i> Imprimir todos QR 
+        </a>
     </div>
-
     <?php if(isset($_GET['msg'])): ?>
         <div class="alert alert-success shadow-sm small border-0 alert-dismissible fade show">
             Operação realizada com sucesso!
