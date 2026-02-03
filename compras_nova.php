@@ -77,8 +77,8 @@ $setores = $pdo->query("SELECT * FROM setores ORDER BY nome ASC")->fetchAll();
                             </div>
 
                             <div class="col-md-12 mb-3">
-                                <label class="form-label fw-bold">Anexar Arquivo (Opcional)</label>
-                                <input type="file" name="anexo" class="form-control" accept=".jpg,.jpeg,.png,.pdf">
+                                <label class="form-label fw-bold">Anexar Arquivos (Opcional)</label>
+                                <input type="file" name="anexos[]" class="form-control" accept=".jpg,.jpeg,.png,.pdf" multiple>
                                 <small class="text-muted">Fotos da peça ou orçamentos em PDF.</small>
                             </div>
                         </div>
