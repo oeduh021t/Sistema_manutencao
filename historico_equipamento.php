@@ -38,9 +38,19 @@ $stmt->execute([$id]);
 $eq = $stmt->fetch();
 if (!$eq) { die("<div class='alert alert-warning mt-3'>Ativo não localizado.</div>"); }
 
-$stmt_custo = $pdo->prepare("SELECT (SELECT IFNULL(SUM(custo_servico), 0) FROM chamados WHERE equipamento_id = ? AND status = 'Concluído') + (SELECT IFNULL(SUM(ci.quantidade * ci.valor_unitario_na_epoca), 0) FROM chamados_itens ci JOIN chamados c ON ci.chamado_id = c.id WHERE c.equipamento_id = ? AND c.status = 'Concluído') as total");
-$stmt_custo->execute([$id, $id]);
+$stmt_custo = $pdo->prepare("
+    SELECT 
+        (SELECT IFNULL(SUM(custo_servico), 0) FROM chamados WHERE equipamento_id = ? AND status = 'Concluído') + 
+        (SELECT IFNULL(SUM(ci.quantidade * ci.valor_unitario_na_epoca), 0) FROM chamados_itens ci JOIN chamados c ON ci.chamado_id = c.id WHERE c.equipamento_id = ?) +
+        (SELECT IFNULL(SUM(valor_estimado * quantidade), 0) FROM solicitacoes_compra WHERE equipamento_id = ? AND status = 'Comprado') 
+    as total");
+$stmt_custo->execute([$id, $id, $id]); // Passamos o ID 3 vezes agora
 $custo_total = $stmt_custo->fetchColumn() ?: 0;
+
+// Busca os detalhes das compras para listar na timeline ou em tabela separada
+$stmt_compras_vinculadas = $pdo->prepare("SELECT * FROM solicitacoes_compra WHERE equipamento_id = ? AND status = 'Comprado' ORDER BY data_solicitacao DESC");
+$stmt_compras_vinculadas->execute([$id]);
+$compras_itens = $stmt_compras_vinculadas->fetchAll();
 
 $stmt_emp = $pdo->prepare("SELECT id, item_acessorio, solicitante, observacao, `data_empréstimo` as data_e FROM emprestimos WHERE equipamento_id = ? AND status = 'Emprestado'");
 $stmt_emp->execute([$id]);
@@ -147,6 +157,42 @@ usort($timeline, function($a, $b) { return strtotime($b['data']) - strtotime($a[
                         </table>
                     </div>
                 </div>
+<div class="card shadow-sm border-0 text-dark mt-4">
+    <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-cart-check"></i> Peças e Componentes Adquiridos</span>
+        <span class="badge bg-white text-danger">Módulo de Compras</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 small">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">Data</th>
+                        <th>Item/Peça</th>
+                        <th>Qtd</th>
+                        <th>V. Unitário</th>
+                        <th class="text-end pe-3">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($compras_itens): foreach ($compras_itens as $item_c): 
+                        $sub = $item_c['valor_estimado'] * $item_c['quantidade'];
+                    ?>
+                    <tr>
+                        <td class="ps-3"><?= date('d/m/Y', strtotime($item_c['data_solicitacao'])) ?></td>
+                        <td class="fw-bold"><?= htmlspecialchars($item_c['item_nome']) ?></td>
+                        <td><?= $item_c['quantidade'] ?></td>
+                        <td>R$ <?= number_format($item_c['valor_estimado'], 2, ',', '.') ?></td>
+                        <td class="text-end pe-3 fw-bold text-danger">R$ <?= number_format($sub, 2, ',', '.') ?></td>
+                    </tr>
+                    <?php endforeach; else: ?>
+                    <tr><td colspan="5" class="text-center py-4 text-muted">Nenhuma peça vinculada a este ativo.</td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
             </div>
 
             <div class="card shadow-sm border-0 text-dark">

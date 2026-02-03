@@ -85,6 +85,14 @@ $nivel = $_SESSION['usuario_nivel'];
             </a>
         </li>
 
+
+<li class="nav-item">
+    <a class="nav-link <?= ($pagina == 'compras_lista' || $pagina == 'compras_nova') ? 'active' : '' ?>" href="index.php?p=compras_lista">
+        <i class="bi bi-cart-fill text-warning"></i>
+        <span class="ms-2">Compras / Peças</span>
+    </a>
+</li>
+
         <?php if (in_array($nivel, ['admin', 'coordenador'])): ?>
         <li class="nav-item">
             <a class="nav-link d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#collapseAuditoria">
@@ -98,7 +106,7 @@ $nivel = $_SESSION['usuario_nivel'];
                     <a href="index.php?p=relatorio_emprestimos" class="nav-link text-white">Itens emprestados</a>
                     <a href="index.php?p=auditoria_custos" class="nav-link text-white">Auditoria de Custos</a>
                     <a href="index.php?p=auditoria_equipamentos" class="nav-link text-white"> Auditoria Equipamentos</a>
-                    <a href="index.php?p=historico_exaustao" class="nav-link text-white fw-bold" style="color: #0dcaf0 !important;"><i class="bi bi-fan me-1"></i> Histórico Exaustão</a>
+                    <a href="index.php?p=historico_exaustao" class="nav-link text-white"> Histórico Exaustão</a>
                 </div>
             </div>
         </li>
