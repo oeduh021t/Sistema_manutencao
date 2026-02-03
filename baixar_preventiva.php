@@ -17,17 +17,16 @@ if ($id) {
         $stmt = $pdo->prepare("UPDATE equipamentos SET data_ultima_preventiva = CURRENT_DATE WHERE id = ?");
         $stmt->execute([$id]);
 
-        // 2. Verifica se é um Ar Condicionado pelo preenchimento do checklist
+        // 2. Verifica qual tipo de checklist salvar
         if (isset($_POST['capacidade_btu'])) {
+            // --- FLUXO AR CONDICIONADO (CLIMATIZAÇÃO) ---
             $stmt_check = $pdo->prepare("
                 INSERT INTO checklist_climatizacao (
                     equipamento_id, capacidade_btu, tipo_gas, tipo_periodicidade,
-                    
                     filtro_inspecao, obs_filtro_inspecao,
                     filtro_limpeza, obs_filtro_lavagem,
                     filtro_reinstalacao, obs_filtro_reinstalacao,
                     filtro_substituicao, justificativa_filtro,
-                    
                     limpeza_bandeja, obs_bandeja,
                     limpeza_dreno, obs_dreno,
                     limpeza_evaporadora, obs_evaporadora,
@@ -35,7 +34,6 @@ if ($id) {
                     conexoes_eletricas, obs_eletrica,
                     teste_controle, obs_controle,
                     ruidos_vibracoes, obs_ruidos,
-                    
                     observacoes_tecnicas, status_final, 
                     tecnico_nome, responsavel_setor,
                     assinatura_tecnico, assinatura_responsavel
@@ -52,14 +50,10 @@ if ($id) {
                 $_POST['capacidade_btu'],
                 $_POST['tipo_gas'],
                 $_POST['periodicidade'],
-                
-                // Seção A - Filtros
                 $_POST['filtro_inspecao'], $_POST['obs_filtro_inspecao'],
                 $_POST['filtro_lavagem'], $_POST['obs_filtro_lavagem'],
                 $_POST['filtro_reinstalacao'], $_POST['obs_filtro_reinstalacao'],
                 $_POST['filtro_substituicao'], $_POST['justificativa_filtro'],
-                
-                // Seção B - Inspeção Mensal
                 $_POST['limpeza_bandeja'], $_POST['obs_bandeja'],
                 $_POST['limpeza_dreno'], $_POST['obs_dreno'],
                 $_POST['limpeza_evaporadora'], $_POST['obs_evaporadora'],
@@ -67,19 +61,56 @@ if ($id) {
                 $_POST['conexoes_eletricas'], $_POST['obs_eletrica'],
                 $_POST['teste_controle'], $_POST['obs_controle'],
                 $_POST['ruidos_vibracoes'], $_POST['obs_ruidos'],
-                
-                // Finalização e Assinaturas
                 $_POST['obs_tecnicas'],
                 $_POST['status_final'],
                 $tecnico,
                 $_POST['responsavel_setor'] ?? 'Não informado',
-                $_POST['assinatura_tecnico'],   // Imagem Base64
-                $_POST['assinatura_responsavel'] // Imagem Base64
+                $_POST['assinatura_tecnico'],
+                $_POST['assinatura_responsavel']
             ]);
 
             $msg_log = "✅ PMOC/PREVENTIVA REALIZADA - Status: " . $_POST['status_final'];
+
+        } elseif (isset($_POST['ex_tela_inspecao'])) {
+            // --- FLUXO EXAUSTÃO ---
+            // Mapeando os nomes do seu HTML para as colunas do Banco
+            $stmt_exaustao = $pdo->prepare("
+                INSERT INTO checklist_exaustao (
+                    equipamento_id, tipo_periodicidade, tela_inspecao, tela_lavagem,
+                    tela_montagem, tela_substituicao, justificativa_tela, duto_limpeza,
+                    corrosao, vibracao, gordura_duto, limpeza_coifa, suportes,
+                    eletrica, observacoes_tecnicas, status_final, tecnico_nome,
+                    responsavel_setor, assinatura_tecnico, assinatura_responsavel
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+
+            $stmt_exaustao->execute([
+                $id,
+                $_POST['periodicidade'] ?? 'Mensal',
+                $_POST['ex_tela_inspecao'],      // vindo do seu HTML name="ex_tela_inspecao"
+                $_POST['ex_tela_lavagem'],       // vindo do seu HTML name="ex_tela_lavagem"
+                $_POST['ex_tela_montagem'],      // vindo do seu HTML name="ex_tela_montagem"
+                $_POST['ex_tela_substituicao'],  // vindo do seu HTML name="ex_tela_substituicao"
+                $_POST['justificativa_ex_tela'], // vindo do seu HTML name="justificativa_ex_tela"
+                $_POST['duto_limpeza'] ?? 'Ok',  // Parte B (complete no HTML se necessário)
+                $_POST['corrosao'] ?? 'Ok',      // Parte B
+                $_POST['vibracao'] ?? 'Ok',      // Parte B
+                $_POST['gordura_duto'] ?? 'Ok',  // Parte B
+                $_POST['limpeza_coifa'] ?? 'Ok',  // Parte B
+                $_POST['suportes'] ?? 'Ok',      // Parte B
+                $_POST['eletrica'] ?? 'Ok',      // Parte B
+                $_POST['obs_tecnicas'],
+                $_POST['status_final'],
+                $tecnico,
+                $_POST['responsavel_setor'] ?? 'Não informado',
+                $_POST['assinatura_tecnico'],
+                $_POST['assinatura_responsavel']
+            ]);
+
+            $msg_log = "✅ PREVENTIVA EXAUSTÃO REALIZADA - Status: " . $_POST['status_final'];
+
         } else {
-            // Caso seja uma preventiva de outro tipo de equipamento (Padrão)
+            // Caso seja uma preventiva genérica (outros ativos)
             $msg_log = "MANUTENÇÃO PREVENTIVA REALIZADA (PADRÃO)";
         }
 
@@ -92,10 +123,10 @@ if ($id) {
 
         $pdo->commit();
 
-        echo "<script>alert('Checklist Técnico e Assinaturas salvos com sucesso!'); window.location.href='index.php?p=historico_equipamento&id=$id';</script>";
+        echo "<script>alert('Checklist salvo com sucesso!'); window.location.href='index.php?p=historico_equipamento&id=$id';</script>";
+
     } catch (Exception $e) {
         $pdo->rollBack();
-        // Debug para você ver se algum campo do banco está faltando
         die("Erro ao salvar no banco: " . $e->getMessage());
     }
 } else {

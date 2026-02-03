@@ -151,7 +151,7 @@ usort($timeline, function($a, $b) { return strtotime($b['data']) - strtotime($a[
 
             <div class="card shadow-sm border-0 text-dark">
                 <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-shield-check"></i> Histórico Técnico de PMOCs</span>
+                    <span><i class="bi bi-shield-check"></i> Histórico Técnico</span>
                     <span class="badge bg-white text-primary">HMDL Climatização</span>
                 </div>
                 <div class="card-body p-0">
@@ -173,29 +173,36 @@ $sql_pm = "
     ORDER BY data_manutencao DESC";
 
 $stmt_pm = $pdo->prepare($sql_pm);
-// Passamos o ID duas vezes (uma para cada SELECT do UNION)
 $stmt_pm->execute([$id, $id]); 
-$pmocs = $stmt_pm->fetchAll();
+$preventivas = $stmt_pm->fetchAll();
 
-if ($pmocs): foreach ($pmocs as $p): 
-    $cor = ($p['status_final'] == 'Operando Normalmente') ? 'text-success' : 'text-danger';
+if ($preventivas): foreach ($preventivas as $p): 
+    $cor_status = ($p['status_final'] == 'Operando Normalmente') ? 'text-success' : 'text-danger';
     
-    // Define qual arquivo PDF abrir baseado na origem do dado
-    $link_pdf = ($p['origem'] == 'climatizacao') ? "visualizar_pmoc.php" : "visualizar_exaustor.php";
+    // Define o arquivo e a etiqueta baseada na origem
+    if ($p['origem'] == 'climatizacao') {
+        $badge_tipo = '<span class="badge bg-primary">PMOC</span>';
+        $arquivo_pdf = "visualizar_pmoc.php";
+    } else {
+        $badge_tipo = '<span class="badge bg-info text-white">EXAUSTÃO</span>';
+        $arquivo_pdf = "visualizar_exaustor.php";
+    }
 ?>
     <tr>
         <td class="ps-3 fw-bold"><?= date('d/m/Y H:i', strtotime($p['data_manutencao'])) ?></td>
+        <td><?= $badge_tipo ?></td>
         <td><?= $p['tipo_periodicidade'] ?></td>
         <td><?= htmlspecialchars($p['tecnico_nome']) ?></td>
-        <td class="<?= $cor ?> fw-bold"><?= $p['status_final'] ?></td>
+        <td class="<?= $cor_status ?> fw-bold"><?= $p['status_final'] ?></td>
         <td class="text-end pe-3">
-            <a href="<?= $link_pdf ?>?id_check=<?= $p['id'] ?>" target="_blank" class="btn btn-sm btn-dark py-0">LAUDO PDF</a>
+            <a href="<?= $arquivo_pdf ?>?id_check=<?= $p['id'] ?>" target="_blank" class="btn btn-sm btn-dark py-0 fw-bold">
+                <i class="bi bi-printer"></i> LAUDO
+            </a>
         </td>
     </tr>
 <?php endforeach; else: ?>
-    <tr><td colspan="5" class="text-center py-4 text-muted">Nenhuma preventiva registrada para este ativo.</td></tr>
+    <tr><td colspan="6" class="text-center py-4 text-muted">Nenhuma preventiva registrada.</td></tr>
 <?php endif; ?>
-
 
                             </tbody>
                         </table>

@@ -3,13 +3,10 @@ session_start();
 
 // --- LÓGICA DE REDIRECIONAMENTO PÓS-LOGIN (P/ QR CODE) ---
 if (!isset($_SESSION['usuario_id'])) {
-    // Se o usuário tentar acessar uma página específica sem estar logado
     if (isset($_GET['p'])) {
-        // Captura a URL completa com todos os parâmetros (p=chamados&setor_id=X...)
         $url_tentada = "index.php?" . $_SERVER['QUERY_STRING'];
         $_SESSION['url_redirecionamento'] = $url_tentada;
     }
-    
     header("Location: login.php");
     exit;
 }
@@ -70,7 +67,7 @@ $nivel = $_SESSION['usuario_nivel'];
                 <span><i class="bi bi-plus-square-fill text-primary"></i> Cadastros</span>
                 <i class="bi bi-chevron-down small"></i>
             </a>
-            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['equipamentos', 'itens',  'fornecedores', 'setores', 'tipos_equipamentos']) ? 'show' : '' ?>" id="collapseCadastros">
+            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['equipamentos', 'itens', 'fornecedores', 'setores', 'tipos_equipamentos']) ? 'show' : '' ?>" id="collapseCadastros">
                 <div class="submenu">
                     <a href="index.php?p=equipamentos" class="nav-link text-white">Equipamentos</a>
                     <a href="index.php?p=itens" class="nav-link text-white">Itens</a>
@@ -94,13 +91,14 @@ $nivel = $_SESSION['usuario_nivel'];
                 <span><i class="bi bi-file-earmark-check-fill text-info"></i> Relatórios & Auditoria</span>
                 <i class="bi bi-chevron-down small"></i>
             </a>
-            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['inventario_geral', 'inventario_itens', 'auditoria_custos', 'auditoria_equipamentos']) ? 'show' : '' ?>" id="collapseAuditoria">
+            <div class="collapse <?= in_array(($_GET['p'] ?? ''), ['inventario_geral', 'inventario_itens', 'auditoria_custos', 'auditoria_equipamentos', 'historico_exaustao']) ? 'show' : '' ?>" id="collapseAuditoria">
                 <div class="submenu">
                     <a href="index.php?p=inventario_geral" class="nav-link text-white">Inventário Geral - Equipamentos</a>
                     <a href="index.php?p=inventario_itens" class="nav-link text-white">Inventário Geral - Itens</a>
                     <a href="index.php?p=relatorio_emprestimos" class="nav-link text-white">Itens emprestados</a>
                     <a href="index.php?p=auditoria_custos" class="nav-link text-white">Auditoria de Custos</a>
                     <a href="index.php?p=auditoria_equipamentos" class="nav-link text-white"> Auditoria Equipamentos</a>
+                    <a href="index.php?p=historico_exaustao" class="nav-link text-white fw-bold" style="color: #0dcaf0 !important;"><i class="bi bi-fan me-1"></i> Histórico Exaustão</a>
                 </div>
             </div>
         </li>
@@ -143,7 +141,7 @@ $nivel = $_SESSION['usuario_nivel'];
         $default_page = ($nivel === 'usuario') ? 'chamados' : 'dashboard';
         $pagina = isset($_GET['p']) ? $_GET['p'] : $default_page;
 
-        $paginas_proibidas_usuario = ['dashboard', 'equipamentos', 'setores', 'usuarios', 'tratar_chamado', 'relatorios', 'fornecedores', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos'];
+        $paginas_proibidas_usuario = ['dashboard', 'equipamentos', 'setores', 'usuarios', 'tratar_chamado', 'relatorios', 'fornecedores', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos', 'historico_exaustao'];
 
         if ($nivel === 'usuario' && in_array($pagina, $paginas_proibidas_usuario)) {
             $pagina = 'chamados';
