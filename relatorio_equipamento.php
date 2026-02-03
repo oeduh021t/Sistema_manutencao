@@ -16,11 +16,20 @@ $eq = $stmt_eq->fetch();
 
 if (!$eq) { die("Equipamento não encontrado."); }
 
-// 2. Busca Manutenções (Chamados)
+// 2. Busca Manutenções (Chamados) - ATUALIZADO PARA SOMAR ITENS/PEÇAS
 $stmt_chamados = $pdo->prepare("
-    SELECT data_conclusao as data, id as doc_id, titulo as descricao, 
-           tecnico_responsavel as responsavel, custo_servico, 'MANUTENÇÃO' as tipo, descricao_solucao as detalhes
-    FROM chamados WHERE equipamento_id = ? AND status = 'Concluído'
+    SELECT 
+        c.data_conclusao as data, 
+        c.id as doc_id, 
+        c.titulo as descricao, 
+        c.tecnico_responsavel as responsavel, 
+        c.custo_servico, 
+        'MANUTENÇÃO' as tipo, 
+        c.descricao_solucao as detalhes,
+        (SELECT IFNULL(SUM(ci.quantidade * ci.valor_unitario_na_epoca), 0) 
+         FROM chamados_itens ci WHERE ci.chamado_id = c.id) as custo_itens
+    FROM chamados c 
+    WHERE c.equipamento_id = ? AND c.status = 'Concluído'
 ");
 $stmt_chamados->execute([$id_equipamento]);
 $res_chamados = $stmt_chamados->fetchAll();
@@ -28,8 +37,8 @@ $res_chamados = $stmt_chamados->fetchAll();
 // 3. Busca Movimentações (Trocas/Estoque)
 $stmt_mov = $pdo->prepare("
     SELECT m.data_movimentacao as data, m.id as doc_id, m.descricao_log as descricao, 
-           m.tecnico_nome as responsavel, 0 as custo_servico, 'LOGÍSTICA' as tipo, 
-           CONCAT('Origem: ', s1.nome, ' -> Destino: ', s2.nome) as detalhes
+           m.tecnico_nome as responsavel, 0 as custo_servico, 0 as custo_itens, 'LOGÍSTICA' as tipo, 
+           CONCAT('Origem: ', IFNULL(s1.nome, 'N/D'), ' -> Destino: ', IFNULL(s2.nome, 'N/D')) as detalhes
     FROM equipamentos_historico m
     LEFT JOIN setores s1 ON m.setor_origem_id = s1.id
     LEFT JOIN setores s2 ON m.setor_destino_id = s2.id
@@ -38,14 +47,17 @@ $stmt_mov = $pdo->prepare("
 $stmt_mov->execute([$id_equipamento]);
 $res_movs = $stmt_mov->fetchAll();
 
-// 4. Unifica e ordena por data (Recente para antigo)
+// 4. Unifica e ordena por data
 $historico_unificado = array_merge($res_chamados, $res_movs);
 usort($historico_unificado, function($a, $b) {
     return strtotime($b['data']) - strtotime($a['data']);
 });
 
-// 5. Cálculo de Custo Acumulado
-$custo_total = array_sum(array_column($res_chamados, 'custo_servico'));
+// 5. Cálculo de Custo Acumulado (Serviços + Itens)
+$custo_total = 0;
+foreach ($res_chamados as $c) {
+    $custo_total += ($c['custo_servico'] + $c['custo_itens']);
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -103,7 +115,7 @@ $custo_total = array_sum(array_column($res_chamados, 'custo_servico'));
     </tr>
     <tr>
         <td class="bg-cinza">Tipo/Modelo:</td>
-        <td><?= htmlspecialchars($eq['tipo_nome'] ?? 'N/A') ?></td>
+        <td><?= htmlspecialchars($eq['modelo'] ?? 'N/A') ?></td>
     </tr>
     <tr>
         <td class="bg-cinza">Nº de Série:</td>
@@ -127,7 +139,7 @@ $custo_total = array_sum(array_column($res_chamados, 'custo_servico'));
             <th style="width: 12%;">Categoria</th>
             <th>Descrição do Evento / Detalhes Técnicos</th>
             <th style="width: 20%;">Técnico / Resp.</th>
-            <th style="width: 12%;">Custo (R$)</th>
+            <th style="width: 12%;">Custo Total (R$)</th>
         </tr>
     </thead>
     <tbody>
@@ -136,6 +148,7 @@ $custo_total = array_sum(array_column($res_chamados, 'custo_servico'));
         <?php else: ?>
             <?php foreach ($historico_unificado as $item): 
                 $tag_class = ($item['tipo'] == 'MANUTENÇÃO') ? 'tag-manutencao' : 'tag-logistica';
+                $custo_total_linha = $item['custo_servico'] + $item['custo_itens'];
             ?>
                 <tr>
                     <td><?= date('d/m/Y H:i', strtotime($item['data'])) ?></td>
@@ -145,7 +158,7 @@ $custo_total = array_sum(array_column($res_chamados, 'custo_servico'));
                         <small style="color: #666;"><?= nl2br(htmlspecialchars($item['detalhes'])) ?></small>
                     </td>
                     <td><?= htmlspecialchars($item['responsavel']) ?></td>
-                    <td><?= $item['custo_servico'] > 0 ? number_format($item['custo_servico'], 2, ',', '.') : '---' ?></td>
+                    <td><?= $custo_total_linha > 0 ? number_format($custo_total_linha, 2, ',', '.') : '---' ?></td>
                 </tr>
             <?php endforeach; ?>
         <?php endif; ?>
@@ -153,7 +166,7 @@ $custo_total = array_sum(array_column($res_chamados, 'custo_servico'));
 </table>
 
 <div class="resumo-financeiro">
-    <strong>TOTAL INVESTIDO EM MANUTENÇÃO:</strong> 
+    <strong>TOTAL INVESTIDO EM MANUTENÇÃO (Serviços + Peças):</strong> 
     <span style="color: #d32f2f; font-size: 16px; margin-left: 15px;">
         R$ <?= number_format($custo_total, 2, ',', '.') ?>
     </span>

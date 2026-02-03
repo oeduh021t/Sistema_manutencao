@@ -125,10 +125,13 @@ function exibirLinhaSetor($id, $mapa, $nivel = 0) {
                 </a>
 
                 <?php if (in_array($nivel_logado, ['admin', 'coordenador'])): ?>
-                    <a href="index.php?p=excluir_setor&id=<?= $id ?>" 
-                       class="btn btn-sm btn-outline-danger" 
-                       onclick="return confirm('Deseja excluir este local e seus sub-setores?')">
-                        <i class="bi bi-trash3"></i>
+                   <a href="excluir_setor.php?id=<?= $id ?>" 
+                     class="btn btn-sm btn-outline-danger" 
+                     onclick="return confirm('Deseja realmente excluir o setor <?= htmlspecialchars($setor['nome']) ?>?')">
+                      <i class="bi bi-trash3"></i>
+                   </a>
+
+
                     </a>
                 <?php endif; ?>
             </div>
