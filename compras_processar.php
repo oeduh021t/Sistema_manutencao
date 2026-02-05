@@ -8,12 +8,7 @@ if (!isset($_SESSION['usuario_id']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $solicitante_id = $_SESSION['usuario_id'];
-$item_nome      = $_POST['item_nome'] ?? '';
-$quantidade     = $_POST['quantidade'] ?? 1;
 $urgencia       = $_POST['urgencia'] ?? 'Média';
-
-// Tratando a vírgula do valor para ponto decimal
-$valor_estimado = (!empty($_POST['valor_estimado'])) ? str_replace(',', '.', $_POST['valor_estimado']) : 0.00;
 $motivo         = $_POST['motivo'] ?? '';
 
 // IDs vinculados
@@ -23,44 +18,60 @@ $setor_id       = !empty($_POST['setor_id']) ? $_POST['setor_id'] : null;
 $status_inicial = 'Pendente';
 
 try {
-    $pdo->beginTransaction(); // Iniciamos uma transação para garantir que tudo salve ou nada salve
+    $pdo->beginTransaction(); // Garantia de que tudo ou nada será salvo
 
-    // 1. Inserir a Solicitação Principal
+    // 1. Inserir a "Capa" da Solicitação
+    // Removidos item_nome, quantidade e valor_estimado desta tabela pois agora ficam na tabela de itens
     $sql = "INSERT INTO solicitacoes_compra (
-                equipamento_id, setor_id, solicitante_id, item_nome, 
-                quantidade, urgencia, valor_estimado, motivo, 
-                status, data_solicitacao
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+                equipamento_id, setor_id, solicitante_id, 
+                urgencia, motivo, status, data_solicitacao
+            ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
-        $equipamento_id, $setor_id, $solicitante_id, $item_nome,
-        $quantidade, $urgencia, $valor_estimado, $motivo, $status_inicial
+        $equipamento_id, $setor_id, $solicitante_id, 
+        $urgencia, $motivo, $status_inicial
     ]);
 
-    $solicitacao_id = $pdo->lastInsertId(); // Pegamos o ID gerado para vincular os anexos
+    $solicitacao_id = $pdo->lastInsertId(); // ID necessário para vincular itens e anexos
 
-    // 2. Processar múltiplos anexos
+    // 2. Inserir os Itens da Solicitação (Loop nos arrays do formulário)
+    if (isset($_POST['item_nome']) && is_array($_POST['item_nome'])) {
+        $sql_item = "INSERT INTO solicitacoes_compra_itens (solicitacao_id, descricao, quantidade, valor_estimado) VALUES (?, ?, ?, ?)";
+        $stmt_item = $pdo->prepare($sql_item);
+
+        foreach ($_POST['item_nome'] as $key => $nome_item) {
+            if (!empty($nome_item)) {
+                $qtd   = $_POST['item_qtd'][$key] ?? 1;
+                $valor = $_POST['item_valor'][$key] ?? 0;
+                // Trata a vírgula para ponto decimal
+                $valor_limpo = str_replace(',', '.', $valor);
+
+                $stmt_item->execute([
+                    $solicitacao_id, 
+                    $nome_item, 
+                    $qtd, 
+                    $valor_limpo
+                ]);
+            }
+        }
+    }
+
+    // 3. Processar múltiplos anexos (Fotos/Orçamentos)
     if (!empty($_FILES['anexos']['name'][0])) {
         $diretorio = "uploads/compras/";
-        
-        // Cria a pasta se não existir
         if (!is_dir($diretorio)) {
             mkdir($diretorio, 0777, true);
         }
 
         foreach ($_FILES['anexos']['name'] as $key => $name) {
             $error = $_FILES['anexos']['error'][$key];
-            
             if ($error === UPLOAD_ERR_OK) {
                 $tmp_name = $_FILES['anexos']['tmp_name'][$key];
                 $extensao = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-                
-                // Geramos um nome único para o arquivo não ser sobrescrito
                 $novo_nome = "compra_" . $solicitacao_id . "_" . uniqid() . "." . $extensao;
 
                 if (move_uploaded_file($tmp_name, $diretorio . $novo_nome)) {
-                    // Salva a referência na tabela de anexos
                     $sql_anexo = "INSERT INTO solicitacoes_compra_anexos (solicitacao_id, arquivo_nome) VALUES (?, ?)";
                     $pdo->prepare($sql_anexo)->execute([$solicitacao_id, $novo_nome]);
                 }
@@ -68,15 +79,15 @@ try {
         }
     }
 
-    $pdo->commit(); // Finaliza a transação com sucesso
+    $pdo->commit(); 
 
     echo "<script>
-            alert('Solicitação de compra e anexos enviados com sucesso!');
+            alert('Solicitação múltipla enviada com sucesso!');
             window.location.href='index.php?p=compras_lista';
           </script>";
 
 } catch (PDOException $e) {
-    $pdo->rollBack(); // Se der erro, desfaz o que foi inserido no banco
+    $pdo->rollBack();
     die("Erro ao salvar no banco de dados: " . $e->getMessage());
 } catch (Exception $e) {
     $pdo->rollBack();

@@ -2,11 +2,10 @@
 // compras_lista.php
 if (!isset($_SESSION['usuario_id'])) { die("Acesso negado."); }
 
-$usuario_id = $_SESSION['usuario_id'];
-$nivel_acesso = $_SESSION['usuario_nivel'] ?? 'comum'; // Ex: comum, financeiro, diretoria
-
-// Consulta para buscar as solicitações
-$sql = "SELECT c.*, e.nome as nome_equipamento, u.nome as nome_solicitante 
+// Consulta atualizada para somar os valores dos itens e contar quantos itens existem
+$sql = "SELECT c.*, e.nome as nome_equipamento, u.nome as nome_solicitante,
+               (SELECT SUM(quantidade * valor_estimado) FROM solicitacoes_compra_itens WHERE solicitacao_id = c.id) as valor_total,
+               (SELECT COUNT(*) FROM solicitacoes_compra_itens WHERE solicitacao_id = c.id) as total_itens
         FROM solicitacoes_compra c
         LEFT JOIN equipamentos e ON c.equipamento_id = e.id
         JOIN usuarios u ON c.solicitante_id = u.id
@@ -31,9 +30,9 @@ $compras = $stmt->fetchAll();
                         <tr>
                             <th>ID</th>
                             <th>Data</th>
-                            <th>Item</th>
+                            <th>Qtd Itens</th>
                             <th>Equipamento</th>
-                            <th>Solicitante</th>
+                            <th>Total Est.</th>
                             <th>Urgência</th>
                             <th>Status</th>
                             <th class="text-center">Ações</th>
@@ -44,9 +43,9 @@ $compras = $stmt->fetchAll();
                             <tr>
                                 <td>#<?= $c['id'] ?></td>
                                 <td><?= date('d/m/Y', strtotime($c['data_solicitacao'])) ?></td>
-                                <td class="fw-bold"><?= htmlspecialchars($c['item_nome']) ?></td>
+                                <td><span class="badge bg-light text-dark border"><?= $c['total_itens'] ?> item(ns)</span></td>
                                 <td><?= $c['nome_equipamento'] ? htmlspecialchars($c['nome_equipamento']) : '<span class="text-muted small">Uso Geral</span>' ?></td>
-                                <td><?= htmlspecialchars($c['nome_solicitante']) ?></td>
+                                <td class="fw-bold text-success">R$ <?= number_format($c['valor_total'], 2, ',', '.') ?></td>
                                 <td>
                                     <?php 
                                     $cor_urg = ['Baixa'=>'info', 'Média'=>'warning', 'Alta'=>'danger', 'Crítica'=>'dark'];
@@ -66,9 +65,6 @@ $compras = $stmt->fetchAll();
                                 </td>
                             </tr>
                         <?php endforeach; ?>
-                        <?php if (empty($compras)): ?>
-                            <tr><td colspan="8" class="text-center py-4 text-muted">Nenhuma solicitação encontrada.</td></tr>
-                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>
