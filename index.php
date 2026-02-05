@@ -85,13 +85,20 @@ $nivel = $_SESSION['usuario_nivel'];
             </a>
         </li>
 
+        <li class="nav-item">
+            <a class="nav-link <?= (isset($_GET['p']) && ($_GET['p'] == 'compras_lista' || $_GET['p'] == 'compras_nova')) ? 'active' : '' ?>" href="index.php?p=compras_lista">
+                <i class="bi bi-cart-fill text-warning"></i>
+                <span class="ms-2">Compras / Peças</span>
+            </a>
+        </li>
 
-<li class="nav-item">
-    <a class="nav-link <?= ($pagina == 'compras_lista' || $pagina == 'compras_nova') ? 'active' : '' ?>" href="index.php?p=compras_lista">
-        <i class="bi bi-cart-fill text-warning"></i>
-        <span class="ms-2">Compras / Peças</span>
-    </a>
-</li>
+        <?php if ($nivel !== 'usuario'): ?>
+        <li class="nav-item">
+            <a href="index.php?p=ti_lista" class="nav-link <?= (isset($_GET['p']) && ($_GET['p'] == 'ti_lista' || $_GET['p'] == 'ti_detalhes')) ? 'active' : '' ?>">
+                <i class="bi bi-laptop text-info"></i> <span class="ms-2">TI / Inventário</span>
+            </a>
+        </li>
+        <?php endif; ?>
 
         <?php if (in_array($nivel, ['admin', 'coordenador'])): ?>
         <li class="nav-item">
@@ -149,7 +156,8 @@ $nivel = $_SESSION['usuario_nivel'];
         $default_page = ($nivel === 'usuario') ? 'chamados' : 'dashboard';
         $pagina = isset($_GET['p']) ? $_GET['p'] : $default_page;
 
-        $paginas_proibidas_usuario = ['dashboard', 'equipamentos', 'setores', 'usuarios', 'tratar_chamado', 'relatorios', 'fornecedores', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos', 'historico_exaustao'];
+        // Atualizado para incluir as páginas de TI como proibidas para o nível usuário
+        $paginas_proibidas_usuario = ['dashboard', 'equipamentos', 'setores', 'usuarios', 'tratar_chamado', 'relatorios', 'fornecedores', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos', 'historico_exaustao', 'ti_lista', 'ti_detalhes'];
 
         if ($nivel === 'usuario' && in_array($pagina, $paginas_proibidas_usuario)) {
             $pagina = 'chamados';
