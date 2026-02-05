@@ -92,13 +92,25 @@ $nivel = $_SESSION['usuario_nivel'];
             </a>
         </li>
 
-        <?php if ($nivel !== 'usuario'): ?>
-        <li class="nav-item">
-            <a href="index.php?p=ti_lista" class="nav-link <?= (isset($_GET['p']) && ($_GET['p'] == 'ti_lista' || $_GET['p'] == 'ti_detalhes')) ? 'active' : '' ?>">
-                <i class="bi bi-laptop text-info"></i> <span class="ms-2">TI / Inventário</span>
+<?php if ($nivel !== 'usuario'): ?>
+<li class="nav-item">
+    <a class="nav-link d-flex justify-content-between align-items-center <?= (isset($_GET['p']) && (strpos($_GET['p'], 'ti_') !== false)) ? 'active' : '' ?>" 
+       data-bs-toggle="collapse" href="#collapseTI">
+        <span><i class="bi bi-laptop text-info"></i> TI / Inventário</span>
+        <i class="bi bi-chevron-down small"></i>
+    </a>
+    <div class="collapse <?= (isset($_GET['p']) && (strpos($_GET['p'], 'ti_') !== false)) ? 'show' : '' ?>" id="collapseTI">
+        <div class="submenu">
+            <a href="index.php?p=ti_lista" class="nav-link text-white <?= ($_GET['p'] == 'ti_lista' || $_GET['p'] == 'ti_detalhes') ? 'fw-bold text-primary' : '' ?>">
+                <i class="bi bi-pc-display me-2"></i> Computadores
             </a>
-        </li>
-        <?php endif; ?>
+            <a href="index.php?p=ti_impressoras" class="nav-link text-white <?= ($_GET['p'] == 'ti_impressoras' || $_GET['p'] == 'ti_impressora_detalhes') ? 'fw-bold text-primary' : '' ?>">
+                <i class="bi bi-printer me-2"></i> Impressoras
+            </a>
+        </div>
+    </div>
+</li>
+<?php endif; ?>
 
         <?php if (in_array($nivel, ['admin', 'coordenador'])): ?>
         <li class="nav-item">
@@ -157,7 +169,7 @@ $nivel = $_SESSION['usuario_nivel'];
         $pagina = isset($_GET['p']) ? $_GET['p'] : $default_page;
 
         // Atualizado para incluir as páginas de TI como proibidas para o nível usuário
-        $paginas_proibidas_usuario = ['dashboard', 'equipamentos', 'setores', 'usuarios', 'tratar_chamado', 'relatorios', 'fornecedores', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos', 'historico_exaustao', 'ti_lista', 'ti_detalhes'];
+        $paginas_proibidas_usuario = ['dashboard', 'equipamentos', 'setores', 'usuarios', 'tratar_chamado', 'relatorios', 'fornecedores', 'inventario_geral', 'auditoria_custos', 'auditoria_equipamentos', 'historico_exaustao', 'ti_lista', 'ti_detalhes', 'ti_impressoras', 'ti_impressora_detalhes'];
 
         if ($nivel === 'usuario' && in_array($pagina, $paginas_proibidas_usuario)) {
             $pagina = 'chamados';

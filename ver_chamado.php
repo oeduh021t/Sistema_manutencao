@@ -11,12 +11,16 @@ $id = $_GET['id'];
 $usuario_id = $_SESSION['usuario_id'];
 $nivel = $_SESSION['usuario_nivel'];
 
-// 1. Busca os dados do chamado
-// Se for 'usuario', ele só pode ver se o usuario_id for o dele
-$sql_c = "SELECT c.*, e.patrimonio, e.nome as eq_nome, s.nome as setor_nome 
+// 1. Busca os dados do chamado + Cruzamento com tabelas de TI (Impressoras e Inventário)
+// Utilizamos o patrimônio como chave de ligação entre os módulos
+$sql_c = "SELECT c.*, e.patrimonio, e.nome as eq_nome, s.nome as setor_nome,
+          imp.id as ti_imp_id, imp.ip_rede as ti_imp_ip, imp.nivel_toner, imp.nivel_cilindro, imp.contador_total,
+          inv.id as ti_inv_id, inv.ip as ti_inv_ip
           FROM chamados c 
           JOIN equipamentos e ON c.equipamento_id = e.id 
           JOIN setores s ON e.setor_id = s.id 
+          LEFT JOIN ti_impressoras imp ON e.patrimonio = imp.patrimonio 
+          LEFT JOIN ti_inventario inv ON e.patrimonio = inv.patrimonio
           WHERE c.id = ?";
 
 if ($nivel === 'usuario') {
@@ -58,8 +62,49 @@ $historico = $stmt_hist->fetchAll();
 
     <div class="row">
         <div class="col-md-4">
+            
+            <?php if ($c['ti_imp_id'] || $c['ti_inv_id']): ?>
+            <div class="card shadow-sm mb-3 border-0 border-start border-5 border-info">
+                <div class="card-header bg-info text-white fw-bold">
+                    <i class="bi bi-cpu"></i> Detalhes Técnicos TI
+                </div>
+                <div class="card-body py-2">
+                    <?php if ($c['ti_imp_id']): ?>
+                        <label class="small text-muted d-block text-uppercase mt-2">Endereço IP</label>
+                        <p class="fw-bold mb-2">
+                            <a href="http://<?= $c['ti_imp_ip'] ?>" target="_blank" class="text-decoration-none">
+                                <?= $c['ti_imp_ip'] ?> <i class="bi bi-box-arrow-up-right small"></i>
+                            </a>
+                        </p>
+                        
+                        <label class="small text-muted d-block text-uppercase">Níveis de Suprimento</label>
+                        <div class="progress mb-1" style="height: 8px;">
+                            <div class="progress-bar bg-dark" style="width: <?= $c['nivel_toner'] ?>%"></div>
+                        </div>
+                        <small class="d-block mb-2">Toner: <b><?= $c['nivel_toner'] ?>%</b> | Cilindro: <b><?= $c['nivel_cilindro'] ?>%</b></small>
+
+                        <label class="small text-muted d-block text-uppercase">Contador</label>
+                        <p class="mb-2"><?= number_format($c['contador_total'], 0, ',', '.') ?> págs</p>
+                        
+                        <a href="index.php?p=ti_impressora_detalhes&id=<?= $c['ti_imp_id'] ?>" class="btn btn-xs btn-outline-primary w-100 mt-2">
+                            <i class="bi bi-search"></i> Histórico da Impressora
+                        </a>
+                    <?php endif; ?>
+
+                    <?php if ($c['ti_inv_id']): ?>
+                        <label class="small text-muted d-block text-uppercase mt-2">Endereço IP</label>
+                        <p class="fw-bold mb-2"><?= $c['ti_inv_ip'] ?></p>
+                        
+                        <a href="index.php?p=ti_detalhes&id=<?= $c['ti_inv_id'] ?>" class="btn btn-xs btn-outline-dark w-100 mt-2">
+                            <i class="bi bi-laptop"></i> Ver Inventário PC
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <div class="card shadow-sm mb-3 border-0">
-                <div class="card-header bg-primary text-white fw-bold">Informações</div>
+                <div class="card-header bg-primary text-white fw-bold">Informações do Chamado</div>
                 <div class="card-body">
                     <label class="small text-muted d-block text-uppercase">Equipamento</label>
                     <p class="fw-bold mb-3"><?= htmlspecialchars($c['eq_nome']) ?></p>
@@ -87,7 +132,7 @@ $historico = $stmt_hist->fetchAll();
 
         <div class="col-md-8">
             <div class="card shadow-sm border-0">
-                <div class="card-header bg-dark text-white fw-bold">Acompanhamento do Técnico</div>
+                <div class="card-header bg-dark text-white fw-bold">Acompanhamento do Atendimento</div>
                 <div class="card-body">
                     
                     <div class="mb-4">
@@ -104,7 +149,7 @@ $historico = $stmt_hist->fetchAll();
                         </div>
                     </div>
 
-                    <h6 class="fw-bold border-bottom pb-2 mb-3">Histórico de Atendimento</h6>
+                    <h6 class="fw-bold border-bottom pb-2 mb-3">Linha do Tempo (Histórico)</h6>
                     
                     <?php if (empty($historico)): ?>
                         <div class="text-center py-4">

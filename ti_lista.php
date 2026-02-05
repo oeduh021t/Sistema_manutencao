@@ -1,78 +1,76 @@
 <?php
-require_once 'includes/db.php'; // Sua conexão PDO
+// O index.php já incluiu o db.php, então apenas garantimos a variável
+$db = isset($pdo) ? $pdo : $conn;
 
 // 1. Consultas para os Cards de Resumo
-$totalMaquinas = $pdo->query("SELECT COUNT(*) FROM ti_inventario")->fetchColumn();
-$win10 = $pdo->query("SELECT COUNT(*) FROM ti_inventario WHERE sistema_operacional LIKE '%Windows 10%'")->fetchColumn();
-$win11 = $pdo->query("SELECT COUNT(*) FROM ti_inventario WHERE sistema_operacional LIKE '%Windows 11%'")->fetchColumn();
+$totalMaquinas = $db->query("SELECT COUNT(*) FROM ti_inventario")->fetchColumn();
+$win10 = $db->query("SELECT COUNT(*) FROM ti_inventario WHERE sistema_operacional LIKE '%Windows 10%'")->fetchColumn();
+$win11 = $db->query("SELECT COUNT(*) FROM ti_inventario WHERE sistema_operacional LIKE '%Windows 11%'")->fetchColumn();
 
 // 2. Busca a lista de máquinas
-$stmt = $pdo->query("SELECT id, hostname, usuario_logado, ip_rede, sistema_operacional, status, ultima_atualizacao FROM ti_inventario ORDER BY ultima_atualizacao DESC");
-$maquinas = $stmt->fetchAll();
+$stmt = $db->query("SELECT id, hostname, usuario_logado, ip_rede, sistema_operacional, ultima_atualizacao FROM ti_inventario ORDER BY ultima_atualizacao DESC");
+$maquinas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Gestão de Parque de TI - HMDL</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-</head>
-<body class="bg-light">
-
-<div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center">
-        <h2><i class="fas fa-laptop-medical"></i> Inventário de TI - HMDL</h2>
-        <span class="badge badge-primary">Total: <?= $totalMaquinas ?> dispositivos</span>
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="fw-bold"><i class="bi bi-laptop text-primary"></i> Inventário de TI - HMDL</h2>
+        <span class="badge bg-primary rounded-pill">Total: <?= $totalMaquinas ?> dispositivos</span>
     </div>
-    <hr>
 
     <div class="row mb-4">
         <div class="col-md-4">
-            <div class="card bg-white shadow-sm border-left border-primary">
+            <div class="card shadow-sm border-0 border-start border-primary border-4">
                 <div class="card-body">
-                    <h6 class="text-muted uppercase">Total de Máquinas</h6>
-                    <h2 class="font-weight-bold"><?= $totalMaquinas ?></h2>
+                    <h6 class="text-muted fw-bold">TOTAL DE MÁQUINAS</h6>
+                    <h2 class="mb-0"><?= $totalMaquinas ?></h2>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card bg-white shadow-sm border-left border-info">
+            <div class="card shadow-sm border-0 border-start border-info border-4">
                 <div class="card-body">
-                    <h6 class="text-muted">Windows 10</h6>
-                    <h2 class="font-weight-bold text-info"><?= $win10 ?></h2>
+                    <h6 class="text-muted fw-bold">WINDOWS 10</h6>
+                    <h2 class="mb-0 text-info"><?= $win10 ?></h2>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card bg-white shadow-sm border-left border-dark">
+            <div class="card shadow-sm border-0 border-start border-dark border-4">
                 <div class="card-body">
-                    <h6 class="text-muted">Windows 11</h6>
-                    <h2 class="font-weight-bold"><?= $win11 ?></h2>
+                    <h6 class="text-muted fw-bold">WINDOWS 11</h6>
+                    <h2 class="mb-0"><?= $win11 ?></h2>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="card shadow-sm">
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <div class="input-group shadow-sm">
+                <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
+                <input type="text" id="inputPesquisa" class="form-control border-start-0" placeholder="Pesquisar por hostname, IP, usuário ou sistema...">
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead class="thead-light">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
                         <tr>
-                            <th>Status</th>
+                            <th width="120">Status</th>
                             <th>Hostname</th>
                             <th>Usuário Atual</th>
-                            <th>IP</th>
+                            <th>IP de Rede</th>
                             <th>S.O.</th>
                             <th>Visto em</th>
-                            <th class="text-center">Ações</th>
+                            <th class="text-center">Ação</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="tabelaTI">
                         <?php foreach ($maquinas as $m): 
-                            // Lógica para verificar se a máquina está "Online" (Visto nas últimas 24h)
                             $ultima_visto = strtotime($m['ultima_atualizacao']);
                             $vinte_quatro_horas = strtotime('-24 hours');
                             $online = ($ultima_visto > $vinte_quatro_horas);
@@ -80,22 +78,21 @@ $maquinas = $stmt->fetchAll();
                         <tr>
                             <td>
                                 <?php if($online): ?>
-                                    <span class="badge badge-success"><i class="fas fa-check-circle"></i> Online</span>
+                                    <span class="badge bg-success"><i class="bi bi-check-circle"></i> Online</span>
                                 <?php else: ?>
-                                    <span class="badge badge-danger"><i class="fas fa-times-circle"></i> Offline</span>
+                                    <span class="badge bg-danger"><i class="bi bi-exclamation-triangle"></i> Offline</span>
                                 <?php endif; ?>
                             </td>
-                            <td><strong><?= $m['hostname'] ?></strong></td>
-                            <td><i class="fas fa-user-circle text-muted"></i> <?= $m['usuario_logado'] ?></td>
-                            <td><code class="text-primary"><?= $m['ip_rede'] ?></code></td>
-                            <td><small><?= $m['sistema_operacional'] ?></small></td>
-                            <td><?= date('d/m/Y H:i', $ultima_visto) ?></td>
-
+                            <td class="fw-bold"><?= htmlspecialchars($m['hostname']) ?></td>
+                            <td><i class="bi bi-person text-muted"></i> <?= htmlspecialchars($m['usuario_logado']) ?></td>
+                            <td><code class="fw-bold"><?= htmlspecialchars($m['ip_rede']) ?></code></td>
+                            <td><small><?= htmlspecialchars($m['sistema_operacional']) ?></small></td>
+                            <td><small class="text-muted"><?= date('d/m/Y H:i', $ultima_visto) ?></small></td>
                             <td class="text-center">
-                            <a href="index.php?p=ti_detalhes&id=<?= $m['id'] ?>" class="btn btn-info btn-sm text-white shadow-sm">
-                            <i class="bi bi-search"></i> Detalhes
-    </a>
-</td>
+                                <a href="index.php?p=ti_detalhes&id=<?= $m['id'] ?>" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-eye"></i> Detalhes
+                                </a>
+                            </td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -105,5 +102,14 @@ $maquinas = $stmt->fetchAll();
     </div>
 </div>
 
-</body>
-</html>
+<script>
+document.getElementById('inputPesquisa').addEventListener('keyup', function() {
+    let busca = this.value.toLowerCase();
+    let linhas = document.querySelectorAll('#tabelaTI tr');
+
+    linhas.forEach(linha => {
+        let texto = linha.textContent.toLowerCase();
+        linha.style.display = texto.includes(busca) ? "" : "none";
+    });
+});
+</script>
