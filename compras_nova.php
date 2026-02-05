@@ -2,16 +2,34 @@
 // compras_nova.php
 if (!isset($_SESSION['usuario_id'])) { die("Acesso negado."); }
 
-// Busca equipamentos com o ID do setor também para o JavaScript funcionar
+// 1. Busca todos os setores para montar o mapa de caminhos hierárquicos
+$setores_query = $pdo->query("SELECT id, nome, setor_pai_id FROM setores");
+$setores_raw = $setores_query->fetchAll(PDO::FETCH_UNIQUE);
+
+// Função para montar o caminho (ex: Bloco A > Térreo > Banheiro)
+function getCaminhoSetor($id, $mapa) {
+    if (!isset($mapa[$id])) return "";
+    $setor = $mapa[$id];
+    if (!empty($setor['setor_pai_id']) && isset($mapa[$setor['setor_pai_id']])) {
+        return getCaminhoSetor($setor['setor_pai_id'], $mapa) . " > " . $setor['nome'];
+    }
+    return $setor['nome'];
+}
+
+// 2. Monta a lista de caminhos e ordena alfabeticamente para evitar confusão com nomes iguais
+$lista_caminhos = [];
+foreach ($setores_raw as $sid => $s) { 
+    $lista_caminhos[$sid] = getCaminhoSetor($sid, $setores_raw); 
+}
+asort($lista_caminhos);
+
+// 3. Busca equipamentos com o ID do setor para o JavaScript de preenchimento automático
 $sql = "SELECT e.id, e.nome, e.patrimonio, e.setor_id, s.nome as setor_nome 
         FROM equipamentos e 
         LEFT JOIN setores s ON e.setor_id = s.id 
         ORDER BY e.nome ASC";
 $stmt = $pdo->query($sql);
 $equipamentos = $stmt->fetchAll();
-
-// Busca todos os setores para o select de Setor Destinado
-$setores = $pdo->query("SELECT * FROM setores ORDER BY nome ASC")->fetchAll();
 ?>
 
 <div class="container mt-4">
@@ -49,9 +67,9 @@ $setores = $pdo->query("SELECT * FROM setores ORDER BY nome ASC")->fetchAll();
                             <div class="col-md-12 mb-3">
                                 <label class="form-label fw-bold">Setor Destinado</label>
                                 <select name="setor_id" id="setor_id" class="form-select" required>
-                                    <option value="">-- Selecione o Setor --</option>
-                                    <?php foreach ($setores as $s): ?>
-                                        <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['nome']) ?></option>
+                                    <option value="">-- Selecione o Local --</option>
+                                    <?php foreach ($lista_caminhos as $sid => $caminho): ?>
+                                        <option value="<?= $sid ?>"><?= htmlspecialchars($caminho) ?></option>
                                     <?php endforeach; ?>
                                 </select>
                                 <small class="text-muted">Se escolher um equipamento acima, o setor será preenchido sozinho.</small>
@@ -79,7 +97,7 @@ $setores = $pdo->query("SELECT * FROM setores ORDER BY nome ASC")->fetchAll();
                             <div class="col-md-12 mb-3">
                                 <label class="form-label fw-bold">Anexar Arquivos (Opcional)</label>
                                 <input type="file" name="anexos[]" class="form-control" accept=".jpg,.jpeg,.png,.pdf" multiple>
-                                <small class="text-muted">Fotos da peça ou orçamentos em PDF.</small>
+                                <small class="text-muted">Fotos da peça ou orçamentos em PDF. Você pode selecionar vários arquivos.</small>
                             </div>
                         </div>
 
