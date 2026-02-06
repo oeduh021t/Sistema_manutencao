@@ -36,8 +36,9 @@ function getTodosFilhos($pai_id, $mapa) {
 $ids_alvo = getTodosFilhos($id_setor, $setores_mapa);
 $placeholders = implode(',', array_fill(0, count($ids_alvo), '?'));
 
-// 3. Busca Chamados Prediais (Infra)
-$sql = "SELECT c.*, s.nome as nome_setor_especifico
+// 3. Busca Chamados Prediais (Infra) + SOMA DE PEÇAS LANÇADAS
+$sql = "SELECT c.*, s.nome as nome_setor_especifico,
+        (SELECT SUM(quantidade * valor_unitario_na_epoca) FROM chamados_itens WHERE chamado_id = c.id) as custo_materiais
         FROM chamados c 
         LEFT JOIN setores s ON c.setor_id = s.id
         WHERE c.setor_id IN ($placeholders) 
@@ -69,30 +70,20 @@ foreach($compras_itens as $item) {
 }
 
 // 5. Busca Detalhada de Equipamentos e Custos Individuais
-$equipamentos_detalhe = [];
 $manutencoes_equipamentos = [];
 $total_custo_equipamentos = 0;
 
 if ($incluir_equipamentos) {
-    $sql_eq = "SELECT e.*, t.nome as tipo_nome, s.nome as nome_setor_eq
-               FROM equipamentos e 
-               LEFT JOIN tipos_equipamentos t ON e.tipo_id = t.id
-               LEFT JOIN setores s ON e.setor_id = s.id
-               WHERE e.setor_id IN ($placeholders)
-               ORDER BY e.nome ASC";
-    $stmt_eq = $pdo->prepare($sql_eq);
-    $stmt_eq->execute($ids_alvo);
-    $equipamentos_detalhe = $stmt_eq->fetchAll();
-
     if (!empty($ids_alvo)) {
+        // Query de equipamentos também somando as peças da tabela chamados_itens
         $sql_detalhe_custo = "
-            SELECT c.*, e.nome as nome_equipamento, e.patrimonio, s.nome as nome_setor_chamado
+            SELECT c.*, e.nome as nome_equipamento, e.patrimonio, s.nome as nome_setor_chamado,
+            (SELECT SUM(quantidade * valor_unitario_na_epoca) FROM chamados_itens WHERE chamado_id = c.id) as custo_materiais
             FROM chamados c
             JOIN equipamentos e ON c.equipamento_id = e.id
             LEFT JOIN setores s ON c.setor_id = s.id
             WHERE e.setor_id IN ($placeholders) 
             AND c.status = 'Concluído' 
-            AND c.custo_servico > 0
             AND DATE(c.data_conclusao) BETWEEN ? AND ?
             ORDER BY c.data_conclusao DESC";
         
@@ -101,12 +92,20 @@ if ($incluir_equipamentos) {
         $stmt_detalhe->execute($params_eq);
         $manutencoes_equipamentos = $stmt_detalhe->fetchAll();
         
-        foreach($manutencoes_equipamentos as $m) { $total_custo_equipamentos += $m['custo_servico']; }
+        foreach($manutencoes_equipamentos as $m) { 
+            $total_custo_equipamentos += ($m['custo_servico'] + ($m['custo_materiais'] ?? 0)); 
+        }
     }
 }
 
 $caminho_identificador = getCaminhoCompletoRelatorio($id_setor, $setores_mapa);
-$total_custo_infra = array_sum(array_column($chamados_infra, 'custo_servico'));
+
+// Cálculo dos Totais Finais
+$total_custo_infra = 0;
+foreach($chamados_infra as $ci) {
+    $total_custo_infra += ($ci['custo_servico'] + ($ci['custo_materiais'] ?? 0));
+}
+
 $investimento_geral = $total_custo_infra + $total_custo_equipamentos + $total_custo_compras;
 ?>
 
@@ -114,7 +113,7 @@ $investimento_geral = $total_custo_infra + $total_custo_equipamentos + $total_cu
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Relatório Consolidado - <?= htmlspecialchars($setores_mapa[$id_setor]['nome']) ?></title>
+    <title>Relatório de Custos - <?= htmlspecialchars($setores_mapa[$id_setor]['nome']) ?></title>
     <style>
         body { font-family: 'Helvetica', Arial, sans-serif; font-size: 10px; margin: 20px; color: #333; }
         .no-print { background: #f8f9fa; padding: 15px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 6px; }
@@ -127,8 +126,6 @@ $investimento_geral = $total_custo_infra + $total_custo_equipamentos + $total_cu
         .resumo-final { margin-top: 30px; border: 2px solid #198754; background: #f1f8f5; padding: 15px; page-break-inside: avoid; }
         .text-right { text-align: right; }
         .fw-bold { font-weight: bold; }
-        .badge-empresa { background: #eee; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-weight: bold; font-size: 9px; }
-        .img-mini { max-width: 40px; max-height: 40px; border-radius: 4px; border: 1px solid #ddd; }
         .col-setor { color: #0d6efd; font-weight: bold; font-size: 9px; }
         @media print { .no-print { display: none; } }
     </style>
@@ -140,46 +137,44 @@ $investimento_geral = $total_custo_infra + $total_custo_equipamentos + $total_cu
         <input type="hidden" name="id" value="<?= $id_setor ?>">
         <div><label style="display:block; font-size:9px;">Início:</label><input type="date" name="data_inicio" value="<?= $data_inicio ?>"></div>
         <div><label style="display:block; font-size:9px;">Fim:</label><input type="date" name="data_fim" value="<?= $data_fim ?>"></div>
-        <label style="cursor: pointer; padding-bottom: 5px;"><input type="checkbox" name="incluir_equipamentos" value="1" <?= $incluir_equipamentos ? 'checked' : '' ?>> Incluir Inventário e Fotos</label>
-        <button type="submit" style="padding: 5px 15px; background: #333; color: #fff; border: none; cursor: pointer; border-radius: 3px;">Filtrar</button>
-        <button type="button" onclick="window.print()" style="padding: 5px 15px; background: #28a745; color: #fff; border: none; cursor: pointer; border-radius: 3px;">Imprimir PDF</button>
+        <label style="cursor: pointer;"><input type="checkbox" name="incluir_equipamentos" value="1" <?= $incluir_equipamentos ? 'checked' : '' ?>> Incluir Equipamentos</label>
+        <button type="submit" style="padding: 5px 15px; background: #333; color: #fff; border: none; cursor: pointer;">Filtrar</button>
+        <button type="button" onclick="window.print()" style="padding: 5px 15px; background: #28a745; color: #fff; border: none; cursor: pointer;">Imprimir PDF</button>
     </form>
 </div>
 
 <div class="header">
-    <table style="border:none; width: 100%;">
-        <tr style="border:none;">
-            <td style="border:none;">
-                <h2 style="margin:0;">RELATÓRIO CONSOLIDADO DE CUSTOS</h2>
-                <strong>FILTRO PRINCIPAL:</strong> <?= htmlspecialchars($caminho_identificador) ?><br>
-                <strong>PERÍODO:</strong> <?= date('d/m/Y', strtotime($data_inicio)) ?> - <?= date('d/m/Y', strtotime($data_fim)) ?>
-            </td>
-            <td style="border:none; text-align: right; vertical-align: bottom;">GERADO EM: <?= date('d/m/Y H:i') ?></td>
-        </tr>
-    </table>
+    <h2 style="margin:0;">RELATÓRIO CONSOLIDADO DE CUSTOS</h2>
+    <strong>FILTRO:</strong> <?= htmlspecialchars($caminho_identificador) ?><br>
+    <strong>PERÍODO:</strong> <?= date('d/m/Y', strtotime($data_inicio)) ?> - <?= date('d/m/Y', strtotime($data_fim)) ?>
 </div>
 
 <div class="titulo-secao">1. Manutenções de Infraestrutura (Chamados Prediais)</div>
 <table>
     <thead>
         <tr>
-            <th style="width: 10%;">Data</th>
-            <th style="width: 20%;">Setor Específico</th>
-            <th style="width: 30%;">Serviço / OS</th>
-            <th style="width: 25%;">Empresa</th>
-            <th style="width: 15%;" class="text-right">Custo (R$)</th>
+            <th>Data</th>
+            <th>Setor Específico</th>
+            <th>Serviço / OS</th>
+            <th class="text-right">Mão de Obra</th>
+            <th class="text-right">Materiais</th>
+            <th class="text-right">Total (R$)</th>
         </tr>
     </thead>
     <tbody>
-        <?php foreach ($chamados_infra as $c): ?>
+        <?php foreach ($chamados_infra as $c): 
+            $custo_mat = $c['custo_materiais'] ?? 0;
+            $total_os = $c['custo_servico'] + $custo_mat;
+        ?>
         <tr>
             <td><?= date('d/m/Y', strtotime($c['data_abertura'])) ?></td>
             <td class="col-setor"><?= htmlspecialchars($c['nome_setor_especifico']) ?></td>
-            <td><strong><?= htmlspecialchars($c['titulo']) ?></strong><br><small><?= htmlspecialchars($c['descricao_solucao']) ?></small></td>
-            <td><span class="badge-empresa"><?= htmlspecialchars($c['empresa_terceirizada'] ?: 'Interna') ?></span></td>
+            <td><strong><?= htmlspecialchars($c['titulo']) ?></strong></td>
             <td class="text-right"><?= number_format($c['custo_servico'], 2, ',', '.') ?></td>
+            <td class="text-right"><?= number_format($custo_mat, 2, ',', '.') ?></td>
+            <td class="text-right fw-bold"><?= number_format($total_os, 2, ',', '.') ?></td>
         </tr>
-        <?php endforeach; if(empty($chamados_infra)) echo "<tr><td colspan='5'>Nenhum registro encontrado.</td></tr>"; ?>
+        <?php endforeach; if(empty($chamados_infra)) echo "<tr><td colspan='6'>Nenhum registro.</td></tr>"; ?>
     </tbody>
 </table>
 
@@ -187,25 +182,23 @@ $investimento_geral = $total_custo_infra + $total_custo_equipamentos + $total_cu
 <table>
     <thead>
         <tr>
-            <th style="width: 10%;">Data</th>
-            <th style="width: 25%;">Destino (Equipamento)</th>
-            <th style="width: 35%;">Item / Serviço</th>
-            <th style="width: 10%;">Qtd</th>
-            <th style="width: 20%;" class="text-right">Subtotal (R$)</th>
+            <th>Data</th>
+            <th>Item / Serviço</th>
+            <th>Qtd</th>
+            <th class="text-right">Unitário</th>
+            <th class="text-right">Subtotal (R$)</th>
         </tr>
     </thead>
     <tbody>
-        <?php foreach ($compras_itens as $ci): 
-            $subtotal = $ci['valor_estimado'] * $ci['quantidade'];
-        ?>
+        <?php foreach ($compras_itens as $ci): $sub = $ci['valor_estimado'] * $ci['quantidade']; ?>
         <tr>
             <td><?= date('d/m/Y', strtotime($ci['data_solicitacao'])) ?></td>
-            <td><?= $ci['nome_equipamento'] ? htmlspecialchars($ci['nome_equipamento']) : '<span class="text-muted">Uso Geral</span>' ?></td>
             <td><strong><?= htmlspecialchars($ci['item_nome']) ?></strong></td>
             <td><?= $ci['quantidade'] ?></td>
-            <td class="text-right"><?= number_format($subtotal, 2, ',', '.') ?></td>
+            <td class="text-right"><?= number_format($ci['valor_estimado'], 2, ',', '.') ?></td>
+            <td class="text-right"><?= number_format($sub, 2, ',', '.') ?></td>
         </tr>
-        <?php endforeach; if(empty($compras_itens)) echo "<tr><td colspan='5'>Nenhuma compra finalizada neste período.</td></tr>"; ?>
+        <?php endforeach; if(empty($compras_itens)) echo "<tr><td colspan='5'>Nenhuma compra.</td></tr>"; ?>
     </tbody>
 </table>
 
@@ -214,40 +207,45 @@ $investimento_geral = $total_custo_infra + $total_custo_equipamentos + $total_cu
     <table>
         <thead>
             <tr>
-                <th style="width: 10%;">Data</th>
-                <th style="width: 25%;">Equipamento (Patrimônio)</th>
-                <th style="width: 30%;">Serviço Executado</th>
-                <th style="width: 20%;">Empresa</th>
-                <th style="width: 15%;" class="text-right">Custo (R$)</th>
+                <th>Data</th>
+                <th>Equipamento</th>
+                <th>Serviço</th>
+                <th class="text-right">M. Obra</th>
+                <th class="text-right">Materiais</th>
+                <th class="text-right">Total (R$)</th>
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($manutencoes_equipamentos as $m): ?>
+            <?php foreach ($manutencoes_equipamentos as $m): 
+                $c_mat = $m['custo_materiais'] ?? 0;
+                $t_m = $m['custo_servico'] + $c_mat;
+            ?>
             <tr>
                 <td><?= date('d/m/Y', strtotime($m['data_conclusao'])) ?></td>
-                <td><?= htmlspecialchars($m['nome_equipamento']) ?> <br><small>(Pat: <?= $m['patrimonio'] ?>)</small></td>
+                <td><?= htmlspecialchars($m['nome_equipamento']) ?> (<?= $m['patrimonio'] ?>)</td>
                 <td><?= htmlspecialchars($m['titulo']) ?></td>
-                <td><span class="badge-empresa"><?= htmlspecialchars($m['empresa_terceirizada'] ?: 'N/D') ?></span></td>
                 <td class="text-right"><?= number_format($m['custo_servico'], 2, ',', '.') ?></td>
+                <td class="text-right"><?= number_format($c_mat, 2, ',', '.') ?></td>
+                <td class="text-right fw-bold"><?= number_format($t_m, 2, ',', '.') ?></td>
             </tr>
-            <?php endforeach; if(empty($manutencoes_equipamentos)) echo "<tr><td colspan='5'>Sem manutenções no período.</td></tr>"; ?>
+            <?php endforeach; ?>
         </tbody>
     </table>
 <?php endif; ?>
 
 <div class="resumo-final">
-    <table style="border:none; width: 100%;">
+    <table style="border:none;">
         <tr style="border:none;">
-            <td style="border:none; font-size: 11px;">Total em Mão de Obra e Serviços (Infra):</td>
+            <td style="border:none; font-size: 11px;">Total Infraestrutura (Serviços + Peças):</td>
             <td style="border:none;" class="text-right">R$ <?= number_format($total_custo_infra, 2, ',', '.') ?></td>
         </tr>
         <tr style="border:none;">
-            <td style="border:none; font-size: 11px;">Total em Aquisição de Peças e Materiais:</td>
+            <td style="border:none; font-size: 11px;">Total Compras Diretas:</td>
             <td style="border:none;" class="text-right">R$ <?= number_format($total_custo_compras, 2, ',', '.') ?></td>
         </tr>
         <?php if ($incluir_equipamentos): ?>
         <tr style="border:none;">
-            <td style="border:none; font-size: 11px;">Total em Manutenção de Equipamentos (Chamados):</td>
+            <td style="border:none; font-size: 11px;">Total Manutenção Equipamentos:</td>
             <td style="border:none;" class="text-right">R$ <?= number_format($total_custo_equipamentos, 2, ',', '.') ?></td>
         </tr>
         <?php endif; ?>

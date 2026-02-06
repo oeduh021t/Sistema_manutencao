@@ -1,7 +1,6 @@
 <?php
 include_once 'includes/db.php';
 
-// Proteção: Se não houver ID na URL, volta para a lista
 if (!isset($_GET['id'])) {
     echo "<div class='alert alert-danger'>Chamado não especificado.</div>";
     exit;
@@ -11,17 +10,18 @@ $id = $_GET['id'];
 $usuario_id = $_SESSION['usuario_id'];
 $nivel = $_SESSION['usuario_nivel'];
 
-// 1. Busca os dados do chamado + Cruzamento com tabelas de TI (Impressoras e Inventário)
-// Utilizamos o patrimônio como chave de ligação entre os módulos
+// 1. Consulta Corrigida: Note o inv.ip_rede e os LEFT JOINs
 $sql_c = "SELECT c.*, e.patrimonio, e.nome as eq_nome, s.nome as setor_nome,
           imp.id as ti_imp_id, imp.ip_rede as ti_imp_ip, imp.nivel_toner, imp.nivel_cilindro, imp.contador_total,
-          inv.id as ti_inv_id, inv.ip as ti_inv_ip
+          inv.id as ti_inv_id, inv.ip_rede as ti_inv_ip
           FROM chamados c 
-          JOIN equipamentos e ON c.equipamento_id = e.id 
-          JOIN setores s ON e.setor_id = s.id 
-          LEFT JOIN ti_impressoras imp ON e.patrimonio = imp.patrimonio 
-          LEFT JOIN ti_inventario inv ON e.patrimonio = inv.patrimonio
+          LEFT JOIN equipamentos e ON c.equipamento_id = e.id 
+          LEFT JOIN setores s ON c.setor_id = s.id 
+          -- Ligando pelo hostname (ajuste se o campo de ligação for outro)
+          LEFT JOIN ti_impressoras imp ON e.patrimonio = imp.hostname 
+          LEFT JOIN ti_inventario inv ON e.patrimonio = inv.hostname
           WHERE c.id = ?";
+
 
 if ($nivel === 'usuario') {
     $sql_c .= " AND c.usuario_id = ?";
@@ -35,16 +35,15 @@ if ($nivel === 'usuario') {
 $c = $stmt->fetch();
 
 if (!$c) {
-    echo "<div class='alert alert-warning'>Chamado não encontrado ou você não tem permissão para visualizá-lo.</div>";
+    echo "<div class='alert alert-warning'>Chamado não encontrado ou sem permissão.</div>";
     exit;
 }
 
-// 2. Busca o histórico de atualizações (Timeline)
+// 2. Busca o histórico
 $stmt_hist = $pdo->prepare("SELECT * FROM chamados_historico WHERE chamado_id = ? ORDER BY data_registro DESC");
 $stmt_hist->execute([$id]);
 $historico = $stmt_hist->fetchAll();
 ?>
-
 <div class="container-fluid mt-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <a href="index.php?p=chamados" class="btn btn-sm btn-outline-secondary">
