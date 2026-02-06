@@ -1,7 +1,7 @@
 <?php
 include_once 'includes/db.php';
 
-// --- FUNÇÃO TELEGRAM ---
+// --- FUNÇÃO TELEGRAM MANTIDA ---
 function enviarNotificacaoTelegram($mensagem) {
     $token = "8477438164:AAFz5SkUaN3pdF0X0sP-O-sokNGhK3xHSjU";
     $chat_id = "-4879637458"; 
@@ -17,7 +17,7 @@ $nivel_logado = $_SESSION['usuario_nivel'];
 $equip_selecionado_id = isset($_GET['equipamento_id']) ? $_GET['equipamento_id'] : null;
 $setor_selecionado_id = isset($_GET['setor_id']) ? $_GET['setor_id'] : null;
 
-// --- LÓGICA DE FILTROS ---
+// --- LÓGICA DE FILTROS E BUSCA MANTIDA ---
 $busca = isset($_GET['busca']) ? trim($_GET['busca']) : '';
 $status_filtro = isset($_GET['status_filtro']) ? $_GET['status_filtro'] : 'Todos';
 $params = [];
@@ -36,48 +36,43 @@ $equips = $pdo->query("SELECT id, patrimonio, nome, setor_id FROM equipamentos O
 
 // 2. Lógica de abertura de chamado
 if (isset($_POST['abrir_chamado'])) {
-    $categoria = $_POST['categoria_chamado']; // 'TI' ou 'Equipamento'
     $setor_id = $_POST['setor_id'];
-    $equip_id = ($categoria === 'Equipamento' && !empty($_POST['equipamento_id'])) ? $_POST['equipamento_id'] : null;
-    
-    // Se for TI, concatena o subtipo ao título
-    $subtipo_ti = isset($_POST['subtipo_ti']) ? "[" . $_POST['subtipo_ti'] . "] " : "";
-    $titulo = $subtipo_ti . $_POST['titulo'];
+    $equip_id = !empty($_POST['equipamento_id']) ? $_POST['equipamento_id'] : null;
+    $titulo = $_POST['titulo'];
     $desc = $_POST['descricao'];
 
-    // Inserção no banco (Adicionamos a categoria no título ou você pode criar uma coluna 'tipo' no banco futuramente)
     $stmt = $pdo->prepare("INSERT INTO chamados (setor_id, equipamento_id, usuario_id, titulo, descricao_problema, status) VALUES (?, ?, ?, ?, ?, 'Aberto')");
     $stmt->execute([$setor_id, $equip_id, $usuario_id_logado, $titulo, $desc]);
     $chamado_id = $pdo->lastInsertId();
 
     // Notificação Telegram
     $nome_setor_msg = getCaminhoSetor($setor_id, $setores_raw);
-    $icone = ($categoria === 'TI') ? "🖥️ *[TI]*" : "⚙️ *[MANUTENÇÃO]*";
-    
-    $alerta_msg = "🚨 *NOVO CHAMADO #$chamado_id* 🚨\n";
-    $alerta_msg .= "$icone\n\n";
+    $alerta_msg = "🚨 *NOVO CHAMADO #$chamado_id* 🚨\n\n";
     $alerta_msg .= "🏥 *Setor:* $nome_setor_msg\n";
     $alerta_msg .= "📝 *Assunto:* $titulo\n";
-    
     if($equip_id) {
         $stmt_eq = $pdo->prepare("SELECT patrimonio, nome FROM equipamentos WHERE id = ?");
         $stmt_eq->execute([$equip_id]);
         $eq_info = $stmt_eq->fetch();
         $alerta_msg .= "📟 *Equipamento:* " . $eq_info['patrimonio'] . " - " . $eq_info['nome'] . "\n";
     }
-    
     enviarNotificacaoTelegram($alerta_msg);
 
-    // --- UPLOAD DE FOTOS ---
+    // --- UPLOAD DE FOTOS COM VÍNCULO NA CRONOLOGIA ---
     if (!empty($_FILES['fotos_abertura']['name'][0])) {
         foreach ($_FILES['fotos_abertura']['name'] as $key => $name) {
             if ($_FILES['fotos_abertura']['error'][$key] === 0) {
                 $ext = pathinfo($name, PATHINFO_EXTENSION);
                 $novo_nome = "CHAMADO_" . $chamado_id . "_" . time() . "_" . $key . "." . $ext;
+                
                 if (move_uploaded_file($_FILES['fotos_abertura']['tmp_name'][$key], "uploads/" . $novo_nome)) {
+                    // Salva a primeira foto como principal do chamado
                     if ($key === 0) {
                         $pdo->prepare("UPDATE chamados SET foto_abertura = ? WHERE id = ?")->execute([$novo_nome, $chamado_id]);
                     }
+                    
+                    // CRIA O REGISTRO NA CRONOLOGIA PARA CADA FOTO
+                    // Assim a foto aparece na timeline do chamado
                     $stmt_hist = $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico) VALUES (?, ?, ?, 'Aberto', ?)");
                     $stmt_hist->execute([$chamado_id, 'Sistema', 'Evidência fotográfica anexada na abertura.', $novo_nome]);
                 }
@@ -88,7 +83,7 @@ if (isset($_POST['abrir_chamado'])) {
     exit;
 }
 
-// 3. Busca de chamados
+// 3. Busca de chamados mantida
 $sql_base = "SELECT c.*, e.patrimonio, e.nome as eq_nome, s.nome as setor_nome FROM chamados c LEFT JOIN equipamentos e ON c.equipamento_id = e.id LEFT JOIN setores s ON c.setor_id = s.id";
 $condicoes = [];
 if ($nivel_logado === 'usuario') { $condicoes[] = "c.usuario_id = ?"; $params[] = $usuario_id_logado; }
@@ -143,124 +138,72 @@ $chamados = $stmt_c->fetchAll();
                 <h5 class="modal-title fw-bold"><i class="bi bi-megaphone"></i> Nova Solicitação</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            
             <div class="modal-body">
-                <div id="seletor-inicial" class="text-center py-3">
-                    <p class="fw-bold mb-3">Qual a natureza do seu problema?</p>
-                    <div class="row g-2">
-                        <div class="col-6">
-                            <button type="button" class="btn btn-outline-primary w-100 py-4 shadow-sm" onclick="escolherTipo('TI')">
-                                <i class="bi bi-pc-display fs-1 d-block mb-2"></i>
-                                <strong>PROBLEMAS DE TI</strong>
-                            </button>
-                        </div>
-                        <div class="col-6">
-                            <button type="button" class="btn btn-outline-secondary w-100 py-4 shadow-sm" onclick="escolherTipo('Equipamento')">
-                                <i class="bi bi-tools fs-1 d-block mb-2"></i>
-                                <strong>EQUIPAMENTO</strong>
-                            </button>
-                        </div>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Localização</label>
+                    <select name="setor_id" id="setor_select" class="form-select" required onchange="filtrarEquipamentos()">
+                        <option value="">-- Selecione o Local --</option>
+                        <?php
+                        $lista_caminhos = [];
+                        foreach ($setores_raw as $sid => $s) { $lista_caminhos[$sid] = getCaminhoSetor($sid, $setores_raw); }
+                        asort($lista_caminhos);
+                        foreach ($lista_caminhos as $sid => $caminho):
+                            $selected = ($sid == $setor_selecionado_id) ? 'selected' : '';
+                        ?>
+                            <option value="<?= $sid ?>" <?= $selected ?>><?= $caminho ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
 
-                <div id="campos-formulario" style="display: none;">
-                    <input type="hidden" name="categoria_chamado" id="categoria_input">
-                    
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Localização</label>
-                        <select name="setor_id" id="setor_select" class="form-select" required onchange="filtrarEquipamentos()">
-                            <option value="">-- Selecione o Local --</option>
-                            <?php
-                            $lista_caminhos = [];
-                            foreach ($setores_raw as $sid => $s) { $lista_caminhos[$sid] = getCaminhoSetor($sid, $setores_raw); }
-                            asort($lista_caminhos);
-                            foreach ($lista_caminhos as $sid => $caminho):
-                                $selected = ($sid == $setor_selecionado_id) ? 'selected' : '';
-                                echo "<option value='$sid' $selected>$caminho</option>";
-                            endforeach; ?>
-                        </select>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Equipamento (Se houver)</label>
+                    <select name="equipamento_id" id="equipamento_select" class="form-select">
+                        <option value="" data-setor="todos">-- Não se aplica a um equipamento --</option>
+                        <?php foreach($equips as $eq): 
+                            $selected_eq = ($eq['id'] == $equip_selecionado_id) ? 'selected' : '';
+                        ?>
+                            <option value="<?= $eq['id'] ?>" data-setor="<?= $eq['setor_id'] ?>" <?= $selected_eq ?>>
+                                <?= $eq['patrimonio'] ?> - <?= htmlspecialchars($eq['nome']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
-                    <div id="bloco-ti" class="mb-3" style="display:none;">
-                        <label class="form-label fw-bold text-primary">Tipo de Incidente TI</label>
-                        <select name="subtipo_ti" class="form-select border-primary">
-                            <option value="SISTEMAS">Problema no Sistema (MV, etc)</option>
-                            <option value="INTERNET/REDE">Internet ou Rede</option>
-                            <option value="IMPRESSORA">Impressora / Toner</option>
-                            <option value="HARDWARE">Computador / Mouse / Teclado</option>
-                            <option value="ACESSO">Usuários e Senhas</option>
-                        </select>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Assunto/Título</label>
+                    <input type="text" name="titulo" class="form-control" placeholder="Resuma o problema" required>
+                </div>
 
-                    <div id="bloco-equipamento" class="mb-3" style="display:none;">
-                        <label class="form-label fw-bold">Equipamento</label>
-                        <select name="equipamento_id" id="equipamento_select" class="form-select">
-                            <option value="" data-setor="todos">-- Selecione o Patrimônio --</option>
-                            <?php foreach($equips as $eq): 
-                                $selected_eq = ($eq['id'] == $equip_selecionado_id) ? 'selected' : '';
-                            ?>
-                                <option value="<?= $eq['id'] ?>" data-setor="<?= $eq['setor_id'] ?>" <?= $selected_eq ?>>
-                                    <?= $eq['patrimonio'] ?> - <?= htmlspecialchars($eq['nome']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Descrição Detalhada</label>
+                    <textarea name="descricao" class="form-control" rows="3" placeholder="Conte-nos o que está acontecendo..." required></textarea>
+                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Assunto/Título</label>
-                        <input type="text" name="titulo" class="form-control" placeholder="Resuma o problema" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Descrição Detalhada</label>
-                        <textarea name="descricao" class="form-control" rows="3" placeholder="Conte-nos o que está acontecendo..." required></textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small">Anexar Fotos</label>
-                        <input type="file" name="fotos_abertura[]" class="form-control" accept="image/*" multiple>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">Anexar Fotos</label>
+                    <input type="file" name="fotos_abertura[]" class="form-control" accept="image/*" multiple>
                 </div>
             </div>
-
-            <div class="modal-footer bg-light" id="rodape-modal" style="display: none;">
-                <button type="button" class="btn btn-sm btn-link text-muted" onclick="voltarSeletor()">← Alterar Categoria</button>
-                <button type="submit" name="abrir_chamado" class="btn btn-danger flex-grow-1 fw-bold shadow">ENVIAR SOLICITAÇÃO</button>
+            <div class="modal-footer bg-light text-center">
+                <button type="submit" name="abrir_chamado" class="btn btn-danger w-100 fw-bold shadow">ENVIAR SOLICITAÇÃO</button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-function escolherTipo(tipo) {
-    document.getElementById('seletor-inicial').style.display = 'none';
-    document.getElementById('campos-formulario').style.display = 'block';
-    document.getElementById('rodape-modal').style.display = 'flex';
-    document.getElementById('categoria_input').value = tipo;
-
-    if(tipo === 'TI') {
-        document.getElementById('bloco-ti').style.display = 'block';
-        document.getElementById('bloco-equipamento').style.display = 'none';
-        document.getElementById('equipamento_select').required = false;
-    } else {
-        document.getElementById('bloco-ti').style.display = 'none';
-        document.getElementById('bloco-equipamento').style.display = 'block';
-    }
-    filtrarEquipamentos();
-}
-
-function voltarSeletor() {
-    document.getElementById('seletor-inicial').style.display = 'block';
-    document.getElementById('campos-formulario').style.display = 'none';
-    document.getElementById('rodape-modal').style.display = 'none';
-}
-
 function filtrarEquipamentos() {
     const setorId = document.getElementById('setor_select').value;
-    const options = document.getElementById('equipamento_select').options;
+    const equipSelect = document.getElementById('equipamento_select');
+    const options = equipSelect.options;
+    
     for (let i = 0; i < options.length; i++) {
         const optSetorId = options[i].getAttribute('data-setor');
         options[i].style.display = (optSetorId === "todos" || optSetorId === setorId) ? "block" : "none";
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    if (!urlParams.has('equipamento_id')) {
+        equipSelect.value = "";
     }
 }
 
@@ -269,19 +212,17 @@ document.addEventListener("DOMContentLoaded", function() {
     if (urlParams.has('setor_id') || urlParams.has('equipamento_id')) {
         var myModal = new bootstrap.Modal(document.getElementById('modalChamado'));
         myModal.show();
-        // Se vier de QR Code, assume que é Equipamento
-        escolherTipo('Equipamento');
+        filtrarEquipamentos();
+        if (window.history.replaceState) {
+            const urlLimpa = window.location.protocol + "//" + window.location.host + window.location.pathname + "?p=chamados";
+            window.history.replaceState({path: urlLimpa}, '', urlLimpa);
+        }
     }
-});
-
-// Limpar ao fechar modal
-document.getElementById('modalChamado').addEventListener('hidden.bs.modal', function () {
-    voltarSeletor();
 });
 
 setInterval(function(){
     if(!document.querySelector('.modal.show')){
         window.location.reload();
     }
-}, 60000);
+}, 30000);
 </script>
