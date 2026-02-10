@@ -1,9 +1,27 @@
 <?php
 // compras_detalhes.php
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (!isset($_SESSION['usuario_id'])) { die("Acesso negado."); }
+
+include_once 'includes/db.php'; // Certifique-se de que a conexão está inclusa
 
 $id = $_GET['id'] ?? null;
 if (!$id) { header("Location: index.php?p=compras_lista"); exit; }
+
+// --- LÓGICA PARA PROCESSAR NOVO ANEXO ---
+if (isset($_FILES['novo_anexo']) && $_FILES['novo_anexo']['error'] === 0) {
+    $diretorio = "uploads/compras/";
+    if (!is_dir($diretorio)) { mkdir($diretorio, 0777, true); }
+
+    $extensao = pathinfo($_FILES['novo_anexo']['name'], PATHINFO_EXTENSION);
+    $nome_arquivo = "PEDIDO_" . $id . "_" . time() . "." . $extensao;
+
+    if (move_uploaded_file($_FILES['novo_anexo']['tmp_name'], $diretorio . $nome_arquivo)) {
+        $ins = $pdo->prepare("INSERT INTO solicitacoes_compra_anexos (solicitacao_id, arquivo_nome, data_upload) VALUES (?, ?, NOW())");
+        $ins->execute([$id, $nome_arquivo]);
+        echo "<script>alert('Anexo enviado com sucesso!'); window.location.href='index.php?p=compras_detalhes&id=$id';</script>";
+    }
+}
 
 // 1. Busca os detalhes da "Capa" da compra
 $sql = "SELECT c.*, e.nome as nome_equipamento, e.patrimonio,
@@ -28,7 +46,7 @@ $itens->execute([$id]);
 $lista_itens = $itens->fetchAll();
 
 // 3. Busca os anexos
-$anexos = $pdo->prepare("SELECT * FROM solicitacoes_compra_anexos WHERE solicitacao_id = ?");
+$anexos = $pdo->prepare("SELECT * FROM solicitacoes_compra_anexos WHERE solicitacao_id = ? ORDER BY data_upload DESC");
 $anexos->execute([$id]);
 $lista_anexos = $anexos->fetchAll();
 
@@ -36,31 +54,16 @@ $cores = ['Pendente' => 'secondary', 'Financeiro' => 'primary', 'Diretoria' => '
 ?>
 
 <style>
-/* --- ESTILO DE IMPRESSÃO REFORÇADO --- */
+/* Estilo de Impressão */
 @media print {
     body * { visibility: hidden; }
     #imprimir-conteudo, #imprimir-conteudo * { visibility: visible; }
-    #imprimir-conteudo {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 10px !important;
-    }
+    #imprimir-conteudo { position: absolute; left: 0; top: 0; width: 100% !important; margin: 0 !important; padding: 10px !important; }
     .d-print-none { display: none !important; }
-    
-    /* Força que o cabeçalho de impressão apareça bem destacado */
-    .header-impressao {
-        display: block !important;
-        border-bottom: 2px solid #000;
-        margin-bottom: 20px;
-        padding-bottom: 10px;
-    }
+    .header-impressao { display: block !important; border-bottom: 2px solid #000; margin-bottom: 20px; padding-bottom: 10px; }
 }
-
-/* Esconde o cabeçalho de hospital na tela normal do sistema */
 .header-impressao { display: none; }
+.card-anexo:hover { background-color: #f8f9fa; }
 </style>
 
 <div class="container mt-4" id="imprimir-conteudo">
@@ -110,7 +113,7 @@ $cores = ['Pendente' => 'secondary', 'Financeiro' => 'primary', 'Diretoria' => '
                             <?php
                             $total_geral = 0;
                             foreach ($lista_itens as $item):
-                                $subtotal = $item['quantidade'] * $item['valor_estimado'];
+                                $subtotal = ($item['quantidade'] ?? 0) * ($item['valor_estimado'] ?? 0);
                                 $total_geral += $subtotal;
                             ?>
                             <tr>
@@ -161,14 +164,14 @@ $cores = ['Pendente' => 'secondary', 'Financeiro' => 'primary', 'Diretoria' => '
                             </div>
                         </div>
                     </div>
-
                 </div>
             </div>
         </div>
 
         <div class="col-md-4 d-print-none">
+            
             <div class="card shadow-sm mb-4">
-                <div class="card-header bg-dark text-white fw-bold small">CONTROLE INTERNO</div>
+                <div class="card-header bg-dark text-white fw-bold small text-uppercase">Controle de Status</div>
                 <div class="card-body">
                     <?php if ($compra['status'] == 'Pendente'): ?>
                         <a href="compras_status.php?id=<?= $id ?>&acao=financeiro" class="btn btn-primary w-100 mb-2">Dar Ciência (Financeiro)</a>
@@ -182,18 +185,41 @@ $cores = ['Pendente' => 'secondary', 'Financeiro' => 'primary', 'Diretoria' => '
                 </div>
             </div>
 
-            <?php if ($lista_anexos): ?>
             <div class="card shadow-sm">
-                <div class="card-header bg-light fw-bold small">ANEXOS</div>
-                <div class="card-body p-2">
-                    <?php foreach ($lista_anexos as $anexo): ?>
-                        <a href="uploads/compras/<?= $anexo['arquivo_nome'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary w-100 mb-1 text-truncate">
-                            <i class="bi bi-file-earmark"></i> <?= $anexo['arquivo_nome'] ?>
-                        </a>
-                    <?php endforeach; ?>
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <span class="fw-bold small text-uppercase">Anexos e Documentos</span>
+                    <i class="bi bi-paperclip"></i>
+                </div>
+                <div class="card-body">
+                    <form method="POST" enctype="multipart/form-data" class="mb-3 border-bottom pb-3">
+                        <label class="form-label small text-muted">Adicionar NF ou Documento:</label>
+                        <div class="input-group input-group-sm">
+                            <input type="file" name="novo_anexo" class="form-control" required>
+                            <button class="btn btn-primary" type="submit">Enviar</button>
+                        </div>
+                    </form>
+
+                    <?php if ($lista_anexos): ?>
+                        <div class="list-group list-group-flush">
+                            <?php foreach ($lista_anexos as $anexo): ?>
+                                <a href="uploads/compras/<?= $anexo['arquivo_nome'] ?>" target="_blank" class="list-group-item list-group-item-action p-2 card-anexo">
+                                    <div class="d-flex w-100 justify-content-between align-items-center">
+                                        <div class="text-truncate" style="max-width: 80%;">
+                                            <i class="bi bi-file-earmark-pdf text-danger me-1"></i>
+                                            <small><?= htmlspecialchars($anexo['arquivo_nome']) ?></small>
+                                        </div>
+                                        <i class="bi bi-box-arrow-up-right small text-muted"></i>
+                                    </div>
+                                    <small class="text-muted" style="font-size: 0.65rem;"><?= date('d/m/Y H:i', strtotime($anexo['data_upload'])) ?></small>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <p class="text-center text-muted small my-3">Nenhum anexo disponível.</p>
+                    <?php endif; ?>
                 </div>
             </div>
-            <?php endif; ?>
+
         </div>
     </div>
 </div>
