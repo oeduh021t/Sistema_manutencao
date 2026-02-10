@@ -16,7 +16,7 @@ $eq = $stmt_eq->fetch();
 
 if (!$eq) { die("Equipamento não encontrado."); }
 
-// 2. Busca Manutenções (Chamados) - ATUALIZADO PARA SOMAR ITENS/PEÇAS
+// 2. Busca Manutenções (Chamados)
 $stmt_chamados = $pdo->prepare("
     SELECT 
         c.data_conclusao as data, 
@@ -47,16 +47,35 @@ $stmt_mov = $pdo->prepare("
 $stmt_mov->execute([$id_equipamento]);
 $res_movs = $stmt_mov->fetchAll();
 
-// 4. Unifica e ordena por data
-$historico_unificado = array_merge($res_chamados, $res_movs);
+// --- NOVO: 4. Busca Peças Adquiridas (Solicitações de Compra) ---
+// --- CORRIGIDO: 4. Busca Peças Adquiridas com Nome do Solicitante ---
+$stmt_pecas = $pdo->prepare("
+    SELECT 
+        s.data_solicitacao as data, 
+        s.id as doc_id, 
+        i.descricao as descricao, 
+        u.nome as responsavel, -- Busca o nome na tabela de usuários
+        0 as custo_servico, 
+        (i.quantidade * i.valor_estimado) as custo_itens, 
+        'COMPRA' as tipo, 
+        CONCAT('Peça adquirida via Pedido #', s.id) as detalhes
+    FROM solicitacoes_compra_itens i
+    JOIN solicitacoes_compra s ON i.solicitacao_id = s.id
+    LEFT JOIN usuarios u ON s.solicitante_id = u.id -- Faz o vínculo com a tabela de usuários
+    WHERE s.equipamento_id = ? AND s.status = 'Comprado'
+");
+$stmt_pecas->execute([$id_equipamento]);
+$res_pecas = $stmt_pecas->fetchAll();
+// 5. Unifica e ordena por data (Agora incluindo Peças)
+$historico_unificado = array_merge($res_chamados, $res_movs, $res_pecas);
 usort($historico_unificado, function($a, $b) {
     return strtotime($b['data']) - strtotime($a['data']);
 });
 
-// 5. Cálculo de Custo Acumulado (Serviços + Itens)
+// 6. Cálculo de Custo Acumulado Total
 $custo_total = 0;
-foreach ($res_chamados as $c) {
-    $custo_total += ($c['custo_servico'] + $c['custo_itens']);
+foreach ($historico_unificado as $item) {
+    $custo_total += ($item['custo_servico'] + $item['custo_itens']);
 }
 ?>
 <!DOCTYPE html>
@@ -76,9 +95,10 @@ foreach ($res_chamados as $c) {
         .tabela-historico { width: 100%; border-collapse: collapse; margin-top: 10px; }
         .tabela-historico th { background: #eee; border: 1px solid #ccc; padding: 8px; text-align: left; font-size: 10px; }
         .tabela-historico td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
-        .tipo-tag { font-size: 9px; font-weight: bold; padding: 2px 4px; border-radius: 3px; color: #fff; }
+        .tipo-tag { font-size: 9px; font-weight: bold; padding: 2px 4px; border-radius: 3px; color: #fff; text-transform: uppercase; }
         .tag-manutencao { background: #0056b3; }
         .tag-logistica { background: #6c757d; }
+        .tag-compra { background: #28a745; } /* Verde para Compras */
         .resumo-financeiro { margin-top: 20px; text-align: right; font-size: 13px; border-top: 2px solid #000; padding-top: 10px; }
         @media print { .no-print { display: none; } }
     </style>
@@ -106,7 +126,7 @@ foreach ($res_chamados as $c) {
         <td class="bg-cinza">Ativo:</td>
         <td><strong><?= htmlspecialchars($eq['nome']) ?></strong></td>
         <td rowspan="4" class="foto-eq">
-            <?php if ($eq['foto_equipamento']): ?>
+            <?php if (!empty($eq['foto_equipamento'])): ?>
                 <img src="uploads/<?= $eq['foto_equipamento'] ?>" alt="Foto do Equipamento">
             <?php else: ?>
                 <small style="color:#999;">Sem Foto</small>
@@ -119,7 +139,7 @@ foreach ($res_chamados as $c) {
     </tr>
     <tr>
         <td class="bg-cinza">Nº de Série:</td>
-        <td><?= htmlspecialchars($eq['num_serie']) ?: '---' ?></td>
+        <td><?= htmlspecialchars($eq['num_serie'] ?? '---') ?></td>
     </tr>
     <tr>
         <td class="bg-cinza">Patrimônio:</td>
@@ -127,11 +147,11 @@ foreach ($res_chamados as $c) {
     </tr>
     <tr>
         <td class="bg-cinza">Local Atual:</td>
-        <td colspan="2"><?= htmlspecialchars($eq['nome_setor']) ?> | <strong>Status:</strong> <?= $eq['status'] ?></td>
+        <td colspan="2"><?= htmlspecialchars($eq['nome_setor'] ?? 'N/D') ?> | <strong>Status:</strong> <?= $eq['status'] ?></td>
     </tr>
 </table>
 
-<div class="titulo-secao">Linha do Tempo (Manutenções e Movimentações)</div>
+<div class="titulo-secao">Linha do Tempo (Histórico Consolidado)</div>
 <table class="tabela-historico">
     <thead>
         <tr>
@@ -147,17 +167,21 @@ foreach ($res_chamados as $c) {
             <tr><td colspan="5" style="text-align:center; padding: 20px;">Nenhum registro encontrado para este ativo.</td></tr>
         <?php else: ?>
             <?php foreach ($historico_unificado as $item): 
-                $tag_class = ($item['tipo'] == 'MANUTENÇÃO') ? 'tag-manutencao' : 'tag-logistica';
-                $custo_total_linha = $item['custo_servico'] + $item['custo_itens'];
+                // Define a cor da tag baseado no tipo
+                $tag_class = 'tag-logistica';
+                if ($item['tipo'] == 'MANUTENÇÃO') $tag_class = 'tag-manutencao';
+                if ($item['tipo'] == 'COMPRA') $tag_class = 'tag-compra';
+
+                $custo_total_linha = ($item['custo_servico'] ?? 0) + ($item['custo_itens'] ?? 0);
             ?>
                 <tr>
                     <td><?= date('d/m/Y H:i', strtotime($item['data'])) ?></td>
                     <td><span class="tipo-tag <?= $tag_class ?>"><?= $item['tipo'] ?></span></td>
                     <td>
-                        <strong><?= htmlspecialchars($item['descricao']) ?></strong><br>
-                        <small style="color: #666;"><?= nl2br(htmlspecialchars($item['detalhes'])) ?></small>
+                        <strong><?= htmlspecialchars($item['descricao'] ?? '') ?></strong><br>
+                        <small style="color: #666;"><?= nl2br(htmlspecialchars($item['detalhes'] ?? '')) ?></small>
                     </td>
-                    <td><?= htmlspecialchars($item['responsavel']) ?></td>
+                    <td><?= htmlspecialchars($item['responsavel'] ?? 'N/D') ?></td>
                     <td><?= $custo_total_linha > 0 ? number_format($custo_total_linha, 2, ',', '.') : '---' ?></td>
                 </tr>
             <?php endforeach; ?>
@@ -166,14 +190,14 @@ foreach ($res_chamados as $c) {
 </table>
 
 <div class="resumo-financeiro">
-    <strong>TOTAL INVESTIDO EM MANUTENÇÃO (Serviços + Peças):</strong> 
+    <strong>CUSTO TOTAL ACUMULADO (Serviços + Peças + Aquisições):</strong> 
     <span style="color: #d32f2f; font-size: 16px; margin-left: 15px;">
         R$ <?= number_format($custo_total, 2, ',', '.') ?>
     </span>
 </div>
 
 <div style="margin-top: 50px; font-size: 9px; color: #999; text-align: center; border-top: 1px solid #eee; padding-top: 10px;">
-    Este documento é um registro histórico oficial do ativo patrimonial. Gerado pelo Sistema MNT.
+    Este documento é um registro histórico oficial do ativo patrimonial. Gerado pelo Sistema MNT em <?= date('d/m/Y H:i:s') ?>.
 </div>
 
 </body>

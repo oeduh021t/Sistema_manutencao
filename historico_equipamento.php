@@ -48,7 +48,20 @@ $stmt_custo->execute([$id, $id, $id]); // Passamos o ID 3 vezes agora
 $custo_total = $stmt_custo->fetchColumn() ?: 0;
 
 // Busca os detalhes das compras para listar na timeline ou em tabela separada
-$stmt_compras_vinculadas = $pdo->prepare("SELECT * FROM solicitacoes_compra WHERE equipamento_id = ? AND status = 'Comprado' ORDER BY data_solicitacao DESC");
+// Busca os detalhes das peças dentro das compras vinculadas ao ativo
+// Busca os detalhes das peças usando os nomes reais das colunas encontrados no DESCRIBE
+$stmt_compras_vinculadas = $pdo->prepare("
+    SELECT 
+        s.data_solicitacao, 
+        i.descricao, 
+        i.quantidade, 
+        i.valor_estimado 
+    FROM solicitacoes_compra_itens i
+    JOIN solicitacoes_compra s ON i.solicitacao_id = s.id
+    WHERE s.equipamento_id = ? 
+    AND s.status = 'Comprado' 
+    ORDER BY s.data_solicitacao DESC
+");
 $stmt_compras_vinculadas->execute([$id]);
 $compras_itens = $stmt_compras_vinculadas->fetchAll();
 
@@ -174,21 +187,26 @@ usort($timeline, function($a, $b) { return strtotime($b['data']) - strtotime($a[
                         <th class="text-end pe-3">Subtotal</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <?php if ($compras_itens): foreach ($compras_itens as $item_c): 
-                        $sub = $item_c['valor_estimado'] * $item_c['quantidade'];
-                    ?>
-                    <tr>
-                        <td class="ps-3"><?= date('d/m/Y', strtotime($item_c['data_solicitacao'])) ?></td>
-                        <td class="fw-bold"><?= htmlspecialchars($item_c['item_nome']) ?></td>
-                        <td><?= $item_c['quantidade'] ?></td>
-                        <td>R$ <?= number_format($item_c['valor_estimado'], 2, ',', '.') ?></td>
-                        <td class="text-end pe-3 fw-bold text-danger">R$ <?= number_format($sub, 2, ',', '.') ?></td>
-                    </tr>
-                    <?php endforeach; else: ?>
-                    <tr><td colspan="5" class="text-center py-4 text-muted">Nenhuma peça vinculada a este ativo.</td></tr>
-                    <?php endif; ?>
-                </tbody>
+                
+<tbody>
+    <?php if ($compras_itens): foreach ($compras_itens as $item_c): 
+        // Cálculo do subtotal garantindo que não haja erro com null
+        $v_unit = $item_c['valor_estimado'] ?? 0;
+        $qtd = $item_c['quantidade'] ?? 0;
+        $sub = $v_unit * $qtd;
+    ?>
+    <tr>
+        <td class="ps-3"><?= date('d/m/Y', strtotime($item_c['data_solicitacao'] ?? 'now')) ?></td>
+        <td class="fw-bold"><?= htmlspecialchars($item_c['descricao'] ?? 'Sem descrição') ?></td>
+        <td><?= $qtd ?></td>
+        <td>R$ <?= number_format($v_unit, 2, ',', '.') ?></td>
+        <td class="text-end pe-3 fw-bold text-danger">R$ <?= number_format($sub, 2, ',', '.') ?></td>
+    </tr>
+    <?php endforeach; else: ?>
+    <tr><td colspan="5" class="text-center py-4 text-muted">Nenhuma peça vinculada a este ativo.</td></tr>
+    <?php endif; ?>
+</tbody>
+
             </table>
         </div>
     </div>
