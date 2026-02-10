@@ -126,7 +126,7 @@ $chamados = $stmt_c->fetchAll();
                 <h6 class="text-muted small">#<?= $c['id'] ?> - <?= htmlspecialchars($c['setor_nome']) ?></h6>
                 <div class="mt-3">
                     <a href="index.php?p=ver_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-outline-secondary">Detalhes</a>
-                    <?php if($nivel_logado !== 'usuario'): ?>
+                    <?php if($nivel_logado !== 'usuario' && $c['status'] !== 'Concluído' ): ?>
                         <a href="index.php?p=tratar_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-primary">Atender</a>
                     <?php endif; ?>
                 </div>
