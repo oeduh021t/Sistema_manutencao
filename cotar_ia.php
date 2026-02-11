@@ -1,66 +1,38 @@
 <?php
-// cotar_ia.php - VERSÃO FINAL INTELIGENTE
-ob_start(); 
+// cotar_ia.php - VERSÃO FINAL OTIMIZADA (IA + SHOPPING + FIX LINKS)
 header('Content-Type: application/json');
-error_reporting(0); 
+
+// Desativa exibição de erros para não corromper o JSON
+error_reporting(0);
+ini_set('display_errors', 0);
 
 $termo = $_GET['termo'] ?? '';
-if (empty($termo)) { 
-    ob_clean();
-    echo json_encode(['erro' => 'Termo vazio']); 
-    exit; 
+$foto  = $_GET['foto']  ?? '';
+
+if (empty($termo)) {
+    echo json_encode(['erro' => 'Termo vazio']);
+    exit;
 }
 
 // --- CHAVES ---
 $serpApiKey = "982d178b5359ca369069a20a3cbd8f69b4229abd96c47c3821e4637088854e6d";
 $geminiApiKey = "AIzaSyCvG_GOm2x3cIFqMIdAW0qVS9vQ4kh8YaY";
 
-// --- 1. BUSCA NO GOOGLE SHOPPING ---
-// Adicionamos "novo" e "preço" para focar em vendas de produtos inteiros
-$urlSerp = "https://serpapi.com/search.json?q=" . urlencode($termo . " novo preço") . "&engine=google_shopping&hl=pt&gl=br&api_key=" . $serpApiKey;
+// --- 1. INTELIGÊNCIA PRÉ-BUSCA (GEMINI) ---
+// Otimiza o termo para evitar que o Google trave em códigos internos/datas
+$urlGemini = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" . $geminiApiKey;
 
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, $urlSerp);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-$resSerp = curl_exec($ch);
-curl_close($ch);
+$prompt = "Atue como comprador técnico hospitalar. Otimize este termo para busca comercial no Google Shopping Brasil: '$termo'. Remova datas, observações entre parênteses e códigos de série inúteis. Retorne APENAS o nome comercial simplificado.";
 
-$jsonSerp = json_decode($resSerp, true);
-$produtosBrutos = [];
+$dataGemini = ["contents" => [["parts" => [["text" => $prompt]]]]];
 
-if (isset($jsonSerp['shopping_results'])) {
-    foreach (array_slice($jsonSerp['shopping_results'], 0, 10) as $p) {
-        $produtosBrutos[] = [
-            'loja' => $p['source'],
-            'preco' => $p['price'],
-            'titulo' => $p['title'],
-            'link' => $p['link'] ?? $p['product_link']
-        ];
+// Se houver foto, ela ajuda a IA a definir o termo melhor
+if (!empty($foto) && file_exists($foto)) {
+    $imgData = @base64_encode(file_get_contents($foto));
+    if ($imgData) {
+        $dataGemini["contents"][0]["parts"][] = ["inline_data" => ["mime_type" => "image/jpeg", "data" => $imgData]];
     }
 }
-
-// Se o Google não encontrar nada, encerra
-if (empty($produtosBrutos)) {
-    ob_clean();
-    echo json_encode([]); 
-    exit;
-}
-
-// --- 2. CURADORIA COM GEMINI AI (O Cérebro) ---
-$prompt = "Você é um comprador técnico especializado em ativos hospitalares e eletrônicos. 
-Analise esta lista JSON para o item: '$termo'.
-
-REGRAS DE OURO PARA FILTRAGEM:
-1. O item DEVE ser o equipamento completo.
-2. Descarte IMEDIATAMENTE itens com preços irrisórios (ex: canetas, cabos, suportes ou filtros). Para este nível de equipamento, qualquer valor abaixo de R$ 300,00 é provavelmente um acessório e deve ser ignorado.
-3. Ignore resultados de papelaria (Kalunga, canetas BIC, etc) se o termo for um ar-condicionado ou eletrônico.
-4. Responda APENAS com um array JSON puro (sem markdown, sem texto extra) com no máximo 5 itens.
-
-Lista: " . json_encode($produtosBrutos);
-
-$urlGemini = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" . $geminiApiKey;
-$dataGemini = ["contents" => [["parts" => [["text" => $prompt]]]]];
 
 $ch = curl_init($urlGemini);
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
@@ -71,25 +43,41 @@ curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 $resGemini = curl_exec($ch);
 curl_close($ch);
 
-$jsonGemini = json_decode($resGemini, true);
-$textoIA = $jsonGemini['candidates'][0]['content']['parts'][0]['text'] ?? '';
+$resIA = json_decode($resGemini, true);
+$termoOtimizado = $resIA['candidates'][0]['content']['parts'][0]['text'] ?? $termo;
 
-// --- 3. LIMPEZA DE SEGURANÇA ---
-// Remove blocos de código markdown ```json e pega apenas o conteúdo entre colchetes [ ]
-if (preg_match('/\[.*\]/s', $textoIA, $matches)) {
-    $textoIA = $matches[0];
-} else {
-    $textoIA = trim(str_replace(['```json', '```'], '', $textoIA));
+// --- 2. BUSCA NO GOOGLE SHOPPING (SERPAPI) ---
+$urlSerp = "https://serpapi.com/search.json?q=" . urlencode(trim($termoOtimizado)) . "&engine=google_shopping&hl=pt&gl=br&api_key=" . $serpApiKey;
+
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, $urlSerp);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+$resSerp = curl_exec($ch);
+curl_close($ch);
+
+$data = json_decode($resSerp, true);
+$final = [];
+
+if (isset($data['shopping_results'])) {
+    foreach (array_slice($data['shopping_results'], 0, 10) as $p) {
+        // CORREÇÃO DOS LINKS: Verifica múltiplos campos de retorno da API
+        $link_real = $p['link'] ?? ($p['product_link'] ?? ($p['shopping_results_link'] ?? '#'));
+        
+        // Se o link for relativo do Google, transforma em absoluto
+        if (strpos($link_real, '/') === 0) {
+            $link_real = "https://www.google.com" . $link_real;
+        }
+
+        $final[] = [
+            'loja'   => $p['source'] ?? 'Loja',
+            'preco'  => $p['price'] ?? '---',
+            'titulo' => $p['title'] ?? '',
+            'link'   => $link_real,
+            'foto'   => $p['thumbnail'] ?? ''
+        ];
+    }
 }
 
-// --- 4. RETORNO FINAL ---
-ob_clean(); // Garante que nenhum erro de PHP "suje" a saída
-if (json_decode($textoIA) === null) {
-    // Se a IA falhar na formatação, enviamos os dados brutos filtrados manualmente por preço
-    $fallback = array_filter($produtosBrutos, function($p) {
-        return (float)str_replace(['R$', '.', ','], ['', '', '.'], $p['preco']) > 100;
-    });
-    echo json_encode(array_slice(array_values($fallback), 0, 5));
-} else {
-    echo $textoIA;
-}
+// Retorno limpo para o JavaScript
+echo json_encode($final);

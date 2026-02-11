@@ -1,7 +1,7 @@
 <?php
 include_once 'includes/db.php';
 
-// --- LOGICA DE PROCESSAMENTO (Sempre antes de qualquer HTML) ---
+// --- LOGICA DE PROCESSAMENTO ---
 
 // 1. Cadastrar
 if (isset($_POST['salvar_item'])) {
@@ -83,6 +83,11 @@ $itens = $pdo->query("SELECT *, (quantidade * valor_unitario) AS subtotal FROM i
                         <td>R$ <?= number_format($it['valor_unitario'], 2, ',', '.') ?></td>
                         <td class="fw-bold">R$ <?= number_format($it['subtotal'], 2, ',', '.') ?></td>
                         <td class="text-end pe-4">
+                            <button type="button" class="btn btn-sm btn-outline-warning border-0" 
+                                    title="Busca Inteligente"
+                                    onclick="buscarPrecosItem('<?= htmlspecialchars($it['nome'] . ' ' . $it['descricao'], ENT_QUOTES) ?>')">
+                                <i class="bi bi-search-heart fs-5"></i>
+                            </button>
                             <button type="button" class="btn btn-sm btn-outline-primary border-0" 
                                     onclick='abrirEdicao(<?= json_encode($it) ?>)'>
                                 <i class="bi bi-pencil-square fs-5"></i>
@@ -101,11 +106,25 @@ $itens = $pdo->query("SELECT *, (quantidade * valor_unitario) AS subtotal FROM i
     </div>
 </div>
 
+<div class="offcanvas offcanvas-end text-dark" tabindex="-1" id="sidebarCotacao" style="width: 420px;">
+  <div class="offcanvas-header bg-dark text-white">
+    <h5 class="offcanvas-title fw-bold"><i class="bi bi-robot me-2"></i>Busca Inteligente</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body bg-light">
+    <div id="status-ia-item" class="text-center py-5 d-none">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <p class="fw-bold text-muted">Consultando mercado real...</p>
+    </div>
+    <div id="lista-precos-ia"></div>
+  </div>
+</div>
+
 <div class="modal fade" id="modalNovoItem" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <form class="modal-content border-0 shadow text-dark" method="POST">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">Cadastrar Novo Item</h5>
+                <h5 class="modal-title fw-bold">Cadastrar Novo Item</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -126,7 +145,7 @@ $itens = $pdo->query("SELECT *, (quantidade * valor_unitario) AS subtotal FROM i
         <form class="modal-content border-0 shadow text-dark" method="POST">
             <input type="hidden" name="id" id="edit_id">
             <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title">Editar Detalhes do Item</h5>
+                <h5 class="modal-title fw-bold">Editar Detalhes do Item</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -146,8 +165,49 @@ function abrirEdicao(item) {
     document.getElementById('edit_descricao').value = item.descricao;
     document.getElementById('edit_valor').value = item.valor_unitario;
     
-    // Força a abertura do modal via JS se o clique falhar
     var myModal = new bootstrap.Modal(document.getElementById('modalEditarItem'));
     myModal.show();
+}
+
+function buscarPrecosItem(termo) {
+    const el = document.getElementById('sidebarCotacao');
+    const sidebar = bootstrap.Offcanvas.getInstance(el) || new bootstrap.Offcanvas(el);
+    const divStatus = document.getElementById('status-ia-item');
+    const divLista = document.getElementById('lista-precos-ia');
+    
+    divLista.innerHTML = '';
+    divStatus.classList.remove('d-none');
+    sidebar.show();
+
+    fetch(`cotar_ia.php?termo=${encodeURIComponent(termo)}`)
+    .then(r => r.json())
+    .then(data => {
+        divStatus.classList.add('d-none');
+        if(!data || data.length === 0) {
+            divLista.innerHTML = '<div class="alert alert-warning border-0 shadow-sm text-center">Nenhum preço real encontrado para este item no momento.</div>';
+            return;
+        }
+
+        data.forEach(i => {
+            divLista.innerHTML += `
+                <div class="card mb-3 border-0 shadow-sm">
+                    <div class="card-body p-2">
+                        <div class="d-flex align-items-center">
+                            <img src="${i.foto || 'https://via.placeholder.com/60'}" class="rounded border me-3" style="width: 60px; height: 60px; object-fit: cover;">
+                            <div class="flex-grow-1" style="min-width: 0;">
+                                <div class="fw-bold text-truncate" style="font-size: 0.9rem;" title="${i.titulo}">${i.titulo}</div>
+                                <div class="text-success fw-bold fs-5">${i.preco}</div>
+                                <small class="text-muted d-block">🛒 ${i.loja}</small>
+                            </div>
+                            <a href="${i.link}" target="_blank" class="btn btn-sm btn-outline-primary ms-2"><i class="bi bi-box-arrow-up-right"></i></a>
+                        </div>
+                    </div>
+                </div>`;
+        });
+    })
+    .catch(err => {
+        divStatus.classList.add('d-none');
+        divLista.innerHTML = '<div class="alert alert-danger border-0 shadow-sm">Erro ao conectar com a inteligência de mercado. Verifique sua conexão.</div>';
+    });
 }
 </script>

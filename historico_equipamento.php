@@ -622,17 +622,48 @@ if ($preventivas): foreach ($preventivas as $p):
         if (!padR.isEmpty()) document.querySelector("#input-responsavel").value = padR.toDataURL();
     };
 
-    function buscarCotacaoIA(t) {
-        const b = document.getElementById('btn-cotar'); const tb = document.getElementById('corpo-cotacao');
-        b.innerHTML = 'Analisando...'; b.disabled = true;
-        fetch(`cotar_ia.php?termo=${encodeURIComponent(t)}`)
-        .then(r => r.json())
-        .then(data => {
-            tb.innerHTML = '';
-            if(data.length === 0) { tb.innerHTML = '<tr><td>Nada encontrado.</td></tr>'; return; }
-            data.forEach(i => {
-                tb.innerHTML += `<tr><td class="small">🛒 ${i.loja}</td><td class="small">${i.preco}</td><td><a href="${i.link}" target="_blank" class="btn btn-xs btn-success py-0">Ver</a></td></tr>`;
-            });
-        }).finally(() => { b.innerHTML = 'BUSCAR PREÇOS REAIS'; b.disabled = false; });
-    }
+function buscarCotacaoIA(t) {
+    const b = document.getElementById('btn-cotar'); 
+    const tb = document.getElementById('corpo-cotacao');
+    
+    // CAPTURA O CAMINHO DA FOTO (Vindo do PHP)
+    // Se não houver foto, o JS enviará uma string vazia
+    const fotoCaminho = "<?= !empty($eq['foto_equipamento']) ? 'uploads/' . $eq['foto_equipamento'] : '' ?>";
+
+    b.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Analisando...'; 
+    b.disabled = true;
+
+    // Enviamos o termo e o caminho da foto para o novo cotar_ia.php
+    fetch(`cotar_ia.php?termo=${encodeURIComponent(t)}&foto=${encodeURIComponent(fotoCaminho)}`)
+    .then(r => r.json())
+    .then(data => {
+        tb.innerHTML = '';
+        if(!data || data.length === 0) { 
+            tb.innerHTML = '<tr><td class="text-center py-3 text-muted">Nenhum resultado assertivo encontrado.</td></tr>'; 
+            return; 
+        }
+        data.forEach(i => {
+            tb.innerHTML += `
+                <tr>
+                    <td class="small py-2">
+                        <div class="fw-bold text-truncate" style="max-width: 150px;" title="${i.titulo}">${i.titulo}</div>
+                        <span class="text-muted" style="font-size: 0.75rem;">🛒 ${i.loja}</span>
+                    </td>
+                    <td class="small fw-bold text-success text-nowrap">${i.preco}</td>
+                    <td class="text-end">
+                        <a href="${i.link}" target="_blank" class="btn btn-xs btn-outline-success py-0 px-2" style="font-size: 0.7rem;">Link</a>
+                    </td>
+                </tr>`;
+        });
+    })
+    .catch(err => {
+        console.error("Erro na busca:", err);
+        tb.innerHTML = '<tr><td class="text-center py-3 text-danger">Erro ao conectar com a IA.</td></tr>';
+    })
+    .finally(() => { 
+        b.innerHTML = 'BUSCAR PREÇOS REAIS'; 
+        b.disabled = false; 
+    });
+}
+
 </script>

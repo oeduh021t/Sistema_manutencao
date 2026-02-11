@@ -22,6 +22,7 @@ $id = $_GET['id'];
 // 2. Processar a Atualização
 if (isset($_POST['atualizar_equipamento'])) {
     $nome = $_POST['nome'];
+    $modelo = $_POST['modelo']; // CAMPO ADICIONADO
     $num_serie = $_POST['num_serie'];
     $patrimonio = $_POST['patrimonio'];
     $tipo_id = $_POST['tipo_id'];
@@ -33,11 +34,13 @@ if (isset($_POST['atualizar_equipamento'])) {
         $foto_nome = "EQUIP_" . time() . "." . $ext;
         move_uploaded_file($_FILES['foto']['tmp_name'], "uploads/" . $foto_nome);
         
-        $stmt = $pdo->prepare("UPDATE equipamentos SET nome=?, num_serie=?, patrimonio=?, tipo_id=?, setor_id=?, status=?, foto_equipamento=? WHERE id=?");
-        $stmt->execute([$nome, $num_serie, $patrimonio, $tipo_id, $setor_id, $status, $foto_nome, $id]);
+        // Query atualizada com MODELO
+        $stmt = $pdo->prepare("UPDATE equipamentos SET nome=?, modelo=?, num_serie=?, patrimonio=?, tipo_id=?, setor_id=?, status=?, foto_equipamento=? WHERE id=?");
+        $stmt->execute([$nome, $modelo, $num_serie, $patrimonio, $tipo_id, $setor_id, $status, $foto_nome, $id]);
     } else {
-        $stmt = $pdo->prepare("UPDATE equipamentos SET nome=?, num_serie=?, patrimonio=?, tipo_id=?, setor_id=?, status=? WHERE id=?");
-        $stmt->execute([$nome, $num_serie, $patrimonio, $tipo_id, $setor_id, $status, $id]);
+        // Query atualizada com MODELO
+        $stmt = $pdo->prepare("UPDATE equipamentos SET nome=?, modelo=?, num_serie=?, patrimonio=?, tipo_id=?, setor_id=?, status=? WHERE id=?");
+        $stmt->execute([$nome, $modelo, $num_serie, $patrimonio, $tipo_id, $setor_id, $status, $id]);
     }
     echo "<div class='alert alert-success mt-3 shadow-sm'>Equipamento atualizado com sucesso!</div>";
 }
@@ -49,7 +52,6 @@ $eq = $stmt->fetch();
 
 if (!$eq) { echo "Equipamento não encontrado."; exit; }
 
-// 4. Buscar Setores e Tipos para os Selects
 $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetchAll(PDO::FETCH_UNIQUE);
 $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetchAll();
 ?>
@@ -63,19 +65,25 @@ $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetc
         <div class="card-body p-4 text-dark">
             <form method="POST" enctype="multipart/form-data">
                 
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Nome do Equipamento</label>
-                    <input type="text" name="nome" class="form-control form-control-lg" value="<?= htmlspecialchars($eq['nome']) ?>" placeholder="Ex: Ar Condicionado Split" required>
+                <div class="row">
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label fw-bold">Nome do Equipamento</label>
+                        <input type="text" name="nome" class="form-control" value="<?= htmlspecialchars($eq['nome']) ?>" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold">Modelo / Detalhe Técnico</label>
+                        <input type="text" name="modelo" class="form-control" value="<?= htmlspecialchars($eq['modelo'] ?? '') ?>" placeholder="Ex: Split 12.000 BTU">
+                    </div>
                 </div>
 
                 <div class="row text-dark">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Nº de Série</label>
-                        <input type="text" name="num_serie" class="form-control" value="<?= htmlspecialchars($eq['num_serie']) ?>" placeholder="Ex: SN123456">
+                        <input type="text" name="num_serie" class="form-control" value="<?= htmlspecialchars($eq['num_serie']) ?>">
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Nº Patrimônio</label>
-                        <input type="text" name="patrimonio" class="form-control font-monospace" value="<?= htmlspecialchars($eq['patrimonio']) ?>" placeholder="Ex: HSP-001" required>
+                        <input type="text" name="patrimonio" class="form-control font-monospace" value="<?= htmlspecialchars($eq['patrimonio']) ?>" required>
                     </div>
                 </div>
 
@@ -100,18 +108,16 @@ $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetc
                                 $lista_localizacoes[$sid] = getCaminhoCompletoSelect($sid, $setores_mapa);
                             }
                             asort($lista_localizacoes);
-
                             foreach ($lista_localizacoes as $sid => $caminho_total):
                                 $stmt_filho = $pdo->prepare("SELECT COUNT(*) FROM setores WHERE setor_pai_id = ?");
                                 $stmt_filho->execute([$sid]);
                                 $tem_filhos = $stmt_filho->fetchColumn() > 0;
-
                                 $niveis = explode(" > ", $caminho_total);
                                 $recuo = str_repeat("&nbsp;&nbsp;", (count($niveis) - 1) * 2);
                                 $simbolo = (count($niveis) > 1) ? "└─ " : "";
                                 $selected = ($sid == $eq['setor_id']) ? 'selected' : '';
                             ?>
-                                <option value="<?= $sid ?>" <?= $selected ?> <?= ($tem_filhos && $sid != $eq['setor_id']) ? 'disabled style="background:#f8f9fa; font-weight:bold; color:#0d6efd;"' : '' ?>>
+                                <option value="<?= $sid ?>" <?= $selected ?> <?= ($tem_filhos && $sid != $eq['setor_id']) ? 'disabled' : '' ?>>
                                     <?= $recuo . $simbolo . $caminho_total ?>
                                 </option>
                             <?php endforeach; ?>
@@ -138,9 +144,8 @@ $tipos = $pdo->query("SELECT * FROM tipos_equipamentos ORDER BY nome ASC")->fetc
                                 <div class="bg-light border rounded text-center py-4 text-muted mb-2">Sem foto cadastrada</div>
                             <?php endif; ?>
                         </div>
-                        <div class="col-md-9 text-dark">
+                        <div class="col-md-9">
                             <input type="file" name="foto" class="form-control mb-2" accept="image/*">
-                            <small class="text-muted"><i class="bi bi-info-circle me-1"></i> Selecione um novo arquivo se desejar substituir a foto atual.</small>
                         </div>
                     </div>
                 </div>
