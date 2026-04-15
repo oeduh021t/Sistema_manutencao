@@ -34,39 +34,31 @@ function getCaminhoSetor($id, $mapa) {
 $setores_raw = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetchAll(PDO::FETCH_UNIQUE);
 $equips = $pdo->query("SELECT id, patrimonio, nome, setor_id FROM equipamentos ORDER BY patrimonio ASC")->fetchAll();
 
-// --- 2. LÓGICA DE ABERTURA DE CHAMADO (BLINDADA) ---
+// --- 1. LÓGICA DE ABERTURA DE CHAMADO (RESTAURADA) ---
 if (isset($_POST['abrir_chamado'])) {
-    $categoria = $_POST['categoria_chamado']; // 'TI' ou 'Equipamento'
+    $categoria = $_POST['categoria_chamado'];
     $setor_id = $_POST['setor_id'];
     $equip_id = ($categoria === 'Equipamento' && !empty($_POST['equipamento_id'])) ? $_POST['equipamento_id'] : null;
-
     $subtipo_ti = isset($_POST['subtipo_ti']) ? "[" . $_POST['subtipo_ti'] . "] " : "";
     $titulo = $subtipo_ti . $_POST['titulo'];
     $desc = $_POST['descricao'];
 
     $pdo->beginTransaction();
-
     try {
-        // 1. Inserção no banco principal
         $stmt = $pdo->prepare("INSERT INTO chamados (setor_id, equipamento_id, usuario_id, titulo, descricao_problema, status) VALUES (?, ?, ?, ?, ?, 'Aberto')");
         $stmt->execute([$setor_id, $equip_id, $usuario_id_logado, $titulo, $desc]);
         $chamado_id = $pdo->lastInsertId();
 
-        // 2. REGISTRO INICIAL NA CRONOLOGIA (com data_registro = NOW())
         $nome_solicitante = $_SESSION['usuario_nome'] ?? 'Solicitante';
         $stmt_hist_inicial = $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, data_registro) VALUES (?, ?, ?, 'Aberto', NOW())");
         $stmt_hist_inicial->execute([$chamado_id, $nome_solicitante, "Problema relatado na abertura: \n" . $desc]);
 
-        // 3. UPLOAD DE FOTOS (Caminho absoluto e log na cronologia)
         if (!empty($_FILES['fotos_abertura']['name'][0])) {
             foreach ($_FILES['fotos_abertura']['name'] as $key => $name) {
                 if ($_FILES['fotos_abertura']['error'][$key] === 0) {
                     $ext = pathinfo($name, PATHINFO_EXTENSION);
                     $novo_nome = "CHAMADO_" . $chamado_id . "_" . time() . "_" . $key . "." . $ext;
-                    
-                    // Caminho absoluto do servidor
                     $caminho_destino = __DIR__ . "/uploads/" . $novo_nome;
-
                     if (move_uploaded_file($_FILES['fotos_abertura']['tmp_name'][$key], $caminho_destino)) {
                         if ($key === 0) {
                             $pdo->prepare("UPDATE chamados SET foto_abertura = ? WHERE id = ?")->execute([$novo_nome, $chamado_id]);
@@ -77,36 +69,38 @@ if (isset($_POST['abrir_chamado'])) {
                 }
             }
         }
-
         $pdo->commit();
 
-        // 4. Notificação Telegram
         $nome_setor_msg = getCaminhoSetor($setor_id, $setores_raw);
-        $icone = ($categoria === 'TI') ? "🖥️ *[TI]*" : "⚙️ *[MANUTENÇÃO]*";
-
-        $alerta_msg = "🚨 *NOVO CHAMADO #$chamado_id* 🚨\n$icone\n\n🏥 *Setor:* $nome_setor_msg\n📝 *Assunto:* $titulo\n";
-        if($equip_id) {
-            $stmt_eq = $pdo->prepare("SELECT patrimonio, nome FROM equipamentos WHERE id = ?");
-            $stmt_eq->execute([$equip_id]);
-            $eq_info = $stmt_eq->fetch();
-            $alerta_msg .= "📟 *Equipamento:* " . $eq_info['patrimonio'] . " - " . $eq_info['nome'] . "\n";
-        }
+        $alerta_msg = "🚨 *NOVO CHAMADO #$chamado_id*\n🏥 *Setor:* $nome_setor_msg\n📝 *Assunto:* $titulo";
         enviarNotificacaoTelegram($alerta_msg);
 
         echo "<script>window.location.href='index.php?p=chamados&sucesso=1';</script>";
         exit;
-
     } catch (Exception $e) {
         $pdo->rollBack();
-        die("Erro ao salvar o chamado: " . $e->getMessage());
+        die("Erro: " . $e->getMessage());
+    }
+}
+
+// --- 2. LÓGICA OBSERVAÇÃO COORDENADOR ---
+if (isset($_POST['salvar_observacao'])) {
+    $id_chamado = $_POST['chamado_id'];
+    $nova_obs = trim($_POST['observacao_texto']);
+    $nome_coord = $_SESSION['usuario_nome'] ?? 'Coordenador';
+    $data_hora = date('d/m/Y H:i');
+    $texto_formatado = "\n\n--- $data_hora ($nome_coord) ---\n" . $nova_obs;
+    $upd_obs = $pdo->prepare("UPDATE chamados SET observacao_coordenador = CONCAT(COALESCE(observacao_coordenador, ''), ?) WHERE id = ?");
+    if ($upd_obs->execute([$texto_formatado, $id_chamado])) {
+        echo "<script>window.location.href='index.php?p=chamados&sucesso_obs=1';</script>";
+        exit;
     }
 }
 
 // 3. Busca de chamados
-$sql_base = "SELECT c.*, e.patrimonio, e.nome as eq_nome, s.nome as setor_nome FROM chamados c LEFT JOIN equipamentos e ON c.equipamento_id = e.id LEFT JOIN setores s ON c.setor_id = s.id";
+$sql_base = "SELECT c.*, s.nome as setor_nome FROM chamados c LEFT JOIN setores s ON c.setor_id = s.id";
 $condicoes = [];
 if ($nivel_logado === 'usuario') { $condicoes[] = "c.usuario_id = ?"; $params[] = $usuario_id_logado; }
-if (!empty($busca)) { $condicoes[] = "(c.id LIKE ? OR c.titulo LIKE ? OR e.patrimonio LIKE ? OR e.nome LIKE ? OR s.nome LIKE ?)"; $term = "%$busca%"; array_push($params, $term, $term, $term, $term, $term); }
 if ($status_filtro !== 'Todos') { $condicoes[] = "c.status = ?"; $params[] = $status_filtro; }
 $where = count($condicoes) > 0 ? " WHERE " . implode(" AND ", $condicoes) : "";
 $sql_final = $sql_base . $where . " ORDER BY FIELD(c.status, 'Aberto', 'Em Atendimento', 'Concluído'), c.data_abertura DESC";
@@ -122,27 +116,37 @@ $chamados = $stmt_c->fetchAll();
     </button>
 </div>
 
-<?php if(isset($_GET['sucesso'])): ?>
-    <div class="alert alert-success shadow-sm border-0">Chamado aberto com sucesso! A equipe técnica foi notificada.</div>
-<?php endif; ?>
-
 <div class="row">
     <?php foreach($chamados as $c):
         $border_color = ($c['status'] == 'Aberto') ? 'border-danger' : (($c['status'] == 'Em Atendimento') ? 'border-warning' : 'border-success');
     ?>
-    <div class="col-md-6 mb-3 text-dark">
-        <div class="card border-start border-4 <?= $border_color ?> shadow-sm h-100">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <h5 class="card-title fw-bold text-truncate" style="max-width: 70%;"><?= htmlspecialchars($c['titulo']) ?></h5>
+    <div class="col-md-6 mb-4">
+        <div class="card border-start border-4 <?= $border_color ?> shadow-sm h-100" style="min-height: 380px;">
+            <div class="card-body p-3 d-flex flex-column text-dark">
+                <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h5 class="card-title fw-bold text-truncate mb-0" style="max-width: 80%;"><?= htmlspecialchars($c['titulo']) ?></h5>
                     <span class="badge <?= ($c['status'] == 'Aberto') ? 'bg-danger' : (($c['status'] == 'Em Atendimento') ? 'bg-warning text-dark' : 'bg-success') ?>"><?= $c['status'] ?></span>
                 </div>
-                <h6 class="text-muted small">#<?= $c['id'] ?> - <?= htmlspecialchars($c['setor_nome']) ?></h6>
-                <div class="mt-3">
-                    <a href="index.php?p=ver_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-outline-secondary">Detalhes</a>
-                    <?php if($nivel_logado !== 'usuario' && $c['status'] !== 'Concluído' ): ?>
-                        <a href="index.php?p=tratar_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-primary">Atender</a>
+                <h6 class="text-muted small mb-3">#<?= $c['id'] ?> - <?= htmlspecialchars($c['setor_nome']) ?></h6>
+                
+                <div class="d-flex gap-2 mb-3">
+                    <a href="index.php?p=ver_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-outline-secondary px-3">Detalhes</a>
+                    <?php if($c['status'] !== 'Concluído' && $nivel_logado !== 'usuario'): ?>
+                        <a href="index.php?p=tratar_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-primary px-3">Atender</a>
                     <?php endif; ?>
+                    <?php if($c['status'] == 'Concluído' && $nivel_logado !== 'usuario'): ?>
+                        <textarea id="obs_data_<?= $c['id'] ?>" style="display:none;"><?= htmlspecialchars($c['observacao_coordenador'] ?? '') ?></textarea>
+                        <button class="btn btn-sm btn-info text-white shadow-sm px-3" onclick="abrirModalObs(<?= $c['id'] ?>)">
+                            <i class="bi bi-chat-quote"></i> Obs. Coordenação
+                        </button>
+                    <?php endif; ?>
+                </div>
+
+                <div class="alert alert-info p-0 flex-grow-1 border-0 m-0 shadow-sm" style="background-color: #f0faff; border-left: 4px solid #0dcaf0 !important; overflow: hidden; display: flex; flex-direction: column;">
+                    <div class="px-2 py-1 border-bottom bg-light fw-bold small text-info" style="font-size: 0.7rem;">HISTÓRICO DA COORDENAÇÃO:</div>
+                    <div class="p-2" style="overflow-y: auto; max-height: 180px; white-space: pre-wrap; font-size: 0.8rem; line-height: 1.4; word-break: break-word;">
+                        <?= !empty($c['observacao_coordenador']) ? htmlspecialchars($c['observacao_coordenador']) : '<span class="text-muted opacity-50">Nenhuma observação.</span>' ?>
+                    </div>
                 </div>
             </div>
         </div>
@@ -157,116 +161,97 @@ $chamados = $stmt_c->fetchAll();
                 <h5 class="modal-title fw-bold"><i class="bi bi-megaphone"></i> Nova Solicitação</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-
             <div class="modal-body">
-                <div id="seletor-inicial" class="text-center py-3" style="display: none;">
-                    <p class="fw-bold mb-3">Qual a natureza do seu problema?</p>
-                    <div class="row g-2">
-                        <div class="col-6">
-                            <button type="button" class="btn btn-outline-primary w-100 py-4 shadow-sm" onclick="escolherTipo('TI')">
-                                <i class="bi bi-pc-display fs-1 d-block mb-2"></i>
-                                <strong>PROBLEMAS DE TI</strong>
-                            </button>
-                        </div>
-                        <div class="col-6">
-                            <button type="button" class="btn btn-outline-secondary w-100 py-4 shadow-sm" onclick="escolherTipo('Equipamento')">
-                                <i class="bi bi-tools fs-1 d-block mb-2"></i>
-                                <strong>EQUIPAMENTO</strong>
-                            </button>
-                        </div>
-                    </div>
+                <input type="hidden" name="categoria_chamado" id="categoria_input" value="Equipamento">
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Localização</label>
+                    <select name="setor_id" id="setor_select" class="form-select" required onchange="filtrarEquipamentos()">
+                        <option value="">-- Selecione o Local --</option>
+                        <?php
+                        $lista_caminhos = [];
+                        foreach ($setores_raw as $sid => $s) { $lista_caminhos[$sid] = getCaminhoSetor($sid, $setores_raw); }
+                        asort($lista_caminhos);
+                        foreach ($lista_caminhos as $sid => $caminho):
+                            $selected = ($sid == $setor_selecionado_id) ? 'selected' : '';
+                            echo "<option value='$sid' $selected>$caminho</option>";
+                        endforeach; ?>
+                    </select>
                 </div>
 
-                <div id="campos-formulario" style="display: block;">
-                    <input type="hidden" name="categoria_chamado" id="categoria_input" value="Equipamento">
+                <div id="bloco-equipamento" class="mb-3">
+                    <label class="form-label fw-bold">Equipamento (Patrimônio)</label>
+                    <select name="equipamento_id" id="equipamento_select" class="form-select">
+                        <option value="" data-setor="todos">-- Selecione o Patrimônio --</option>
+                        <?php foreach($equips as $eq): 
+                            $selected_eq = ($eq['id'] == $equip_selecionado_id) ? 'selected' : ''; ?>
+                            <option value="<?= $eq['id'] ?>" data-setor="<?= $eq['setor_id'] ?>" <?= $selected_eq ?>>
+                                <?= $eq['patrimonio'] ?> - <?= htmlspecialchars($eq['nome']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Localização</label>
-                        <select name="setor_id" id="setor_select" class="form-select" required onchange="filtrarEquipamentos()">
-                            <option value="">-- Selecione o Local --</option>
-                            <?php
-                            $lista_caminhos = [];
-                            foreach ($setores_raw as $sid => $s) { $lista_caminhos[$sid] = getCaminhoSetor($sid, $setores_raw); }
-                            asort($lista_caminhos);
-                            foreach ($lista_caminhos as $sid => $caminho):
-                                $selected = ($sid == $setor_selecionado_id) ? 'selected' : '';
-                                echo "<option value='$sid' $selected>$caminho</option>";
-                            endforeach; ?>
-                        </select>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Assunto/Título</label>
+                    <input type="text" name="titulo" class="form-control" placeholder="Ex: Ar condicionado pingando" required>
+                </div>
 
-                    <div id="bloco-ti" class="mb-3" style="display:none;">
-                        <label class="form-label fw-bold text-primary">Tipo de Incidente TI</label>
-                        <select name="subtipo_ti" class="form-select border-primary">
-                            <option value="SISTEMAS">Problema no Sistema (MV, etc)</option>
-                            <option value="INTERNET/REDE">Internet ou Rede</option>
-                            <option value="IMPRESSORA">Impressora / Toner</option>
-                            <option value="HARDWARE">Computador / Mouse / Teclado</option>
-                            <option value="ACESSO">Usuários e Senhas</option>
-                        </select>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Descrição Detalhada</label>
+                    <textarea name="descricao" class="form-control" rows="3" placeholder="Descreva o problema..." required></textarea>
+                </div>
 
-                    <div id="bloco-equipamento" class="mb-3" style="display:block;">
-                        <label class="form-label fw-bold">Equipamento</label>
-                        <select name="equipamento_id" id="equipamento_select" class="form-select">
-                            <option value="" data-setor="todos">-- Selecione o Patrimônio --</option>
-                            <?php foreach($equips as $eq):
-                                $selected_eq = ($eq['id'] == $equip_selecionado_id) ? 'selected' : '';
-                            ?>
-                                <option value="<?= $eq['id'] ?>" data-setor="<?= $eq['setor_id'] ?>" <?= $selected_eq ?>>
-                                    <?= $eq['patrimonio'] ?> - <?= htmlspecialchars($eq['nome']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Assunto/Título</label>
-                        <input type="text" name="titulo" class="form-control" placeholder="Resuma o problema" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Descrição Detalhada</label>
-                        <textarea name="descricao" class="form-control" rows="3" placeholder="Conte-nos o que está acontecendo..." required></textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small">Anexar Fotos</label>
-                        <input type="file" name="fotos_abertura[]" class="form-control" accept="image/*" multiple>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">Anexar Fotos</label>
+                    <input type="file" name="fotos_abertura[]" class="form-control" accept="image/*" multiple>
                 </div>
             </div>
+            <div class="modal-footer">
+                <button type="submit" name="abrir_chamado" class="btn btn-danger w-100 fw-bold shadow">ENVIAR SOLICITAÇÃO</button>
+            </div>
+        </form>
+    </div>
+</div>
 
-            <div class="modal-footer bg-light" id="rodape-modal" style="display: flex;">
-                <button type="submit" name="abrir_chamado" class="btn btn-danger flex-grow-1 fw-bold shadow">ENVIAR SOLICITAÇÃO</button>
+<div class="modal fade" id="modalObservacao" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" class="modal-content border-0 shadow">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title fw-bold">Histórico da Coordenação</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-dark">
+                <input type="hidden" name="chamado_id" id="obs_chamado_id">
+                <div id="visualizar_obs_anterior" class="mb-3 small p-2 bg-light border rounded" style="max-height: 180px; overflow-y: auto; display: none;">
+                    <div id="texto_anterior_exibicao" style="white-space: pre-wrap;"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Nova Anotação:</label>
+                    <textarea name="observacao_texto" id="obs_texto" class="form-control" rows="4" required></textarea>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="submit" name="salvar_observacao" class="btn btn-info text-white fw-bold w-100">ADICIONAR</button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-// Mantidas para flexibilidade futura se o módulo de TI for reativado
-function escolherTipo(tipo) {
-    document.getElementById('seletor-inicial').style.display = 'none';
-    document.getElementById('campos-formulario').style.display = 'block';
-    document.getElementById('rodape-modal').style.display = 'flex';
-    document.getElementById('categoria_input').value = tipo;
-
-    if(tipo === 'TI') {
-        document.getElementById('bloco-ti').style.display = 'block';
-        document.getElementById('bloco-equipamento').style.display = 'none';
-        document.getElementById('equipamento_select').required = false;
+function abrirModalObs(id) {
+    const textoAnterior = document.getElementById('obs_data_' + id).value;
+    document.getElementById('obs_chamado_id').value = id;
+    document.getElementById('obs_texto').value = ''; 
+    const divVisualizar = document.getElementById('visualizar_obs_anterior');
+    const displayTexto = document.getElementById('texto_anterior_exibicao');
+    if(textoAnterior && textoAnterior.trim() !== "") {
+        divVisualizar.style.display = 'block';
+        displayTexto.innerText = textoAnterior;
     } else {
-        document.getElementById('bloco-ti').style.display = 'none';
-        document.getElementById('bloco-equipamento').style.display = 'block';
+        divVisualizar.style.display = 'none';
     }
-    filtrarEquipamentos();
-}
-
-function voltarSeletor() {
-    document.getElementById('seletor-inicial').style.display = 'block';
-    document.getElementById('campos-formulario').style.display = 'none';
-    document.getElementById('rodape-modal').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('modalObservacao')).show();
 }
 
 function filtrarEquipamentos() {
@@ -281,15 +266,12 @@ function filtrarEquipamentos() {
 document.addEventListener("DOMContentLoaded", function() {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('setor_id') || urlParams.has('equipamento_id')) {
-        var myModal = new bootstrap.Modal(document.getElementById('modalChamado'));
-        myModal.show();
+        new bootstrap.Modal(document.getElementById('modalChamado')).show();
     }
+    filtrarEquipamentos();
 });
 
-// Atualiza a página caso o usuário deixe a aba aberta e inativa por muito tempo
 setInterval(function(){
-    if(!document.querySelector('.modal.show')){
-        window.location.reload();
-    }
+    if(!document.querySelector('.modal.show')) window.location.reload();
 }, 60000);
 </script>
