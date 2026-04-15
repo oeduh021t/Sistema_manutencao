@@ -4,7 +4,7 @@ include_once 'includes/db.php';
 // --- FUNÇÃO TELEGRAM ---
 function enviarNotificacaoTelegram($mensagem) {
     $token = "8477438164:AAFz5SkUaN3pdF0X0sP-O-sokNGhK3xHSjU";
-    $chat_id = "-4879637458"; 
+    $chat_id = "-4879637458";
     $url = "https://api.telegram.org/bot$token/sendMessage?chat_id=$chat_id&text=" . urlencode($mensagem) . "&parse_mode=Markdown";
     $ctx = stream_context_create(['http' => ['timeout' => 5]]);
     @file_get_contents($url, false, $ctx);
@@ -34,58 +34,72 @@ function getCaminhoSetor($id, $mapa) {
 $setores_raw = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetchAll(PDO::FETCH_UNIQUE);
 $equips = $pdo->query("SELECT id, patrimonio, nome, setor_id FROM equipamentos ORDER BY patrimonio ASC")->fetchAll();
 
-// 2. Lógica de abertura de chamado
+// --- 2. LÓGICA DE ABERTURA DE CHAMADO (BLINDADA) ---
 if (isset($_POST['abrir_chamado'])) {
     $categoria = $_POST['categoria_chamado']; // 'TI' ou 'Equipamento'
     $setor_id = $_POST['setor_id'];
     $equip_id = ($categoria === 'Equipamento' && !empty($_POST['equipamento_id'])) ? $_POST['equipamento_id'] : null;
-    
-    // Se for TI, concatena o subtipo ao título
+
     $subtipo_ti = isset($_POST['subtipo_ti']) ? "[" . $_POST['subtipo_ti'] . "] " : "";
     $titulo = $subtipo_ti . $_POST['titulo'];
     $desc = $_POST['descricao'];
 
-    // Inserção no banco (Adicionamos a categoria no título ou você pode criar uma coluna 'tipo' no banco futuramente)
-    $stmt = $pdo->prepare("INSERT INTO chamados (setor_id, equipamento_id, usuario_id, titulo, descricao_problema, status) VALUES (?, ?, ?, ?, ?, 'Aberto')");
-    $stmt->execute([$setor_id, $equip_id, $usuario_id_logado, $titulo, $desc]);
-    $chamado_id = $pdo->lastInsertId();
+    $pdo->beginTransaction();
 
-    // Notificação Telegram
-    $nome_setor_msg = getCaminhoSetor($setor_id, $setores_raw);
-    $icone = ($categoria === 'TI') ? "🖥️ *[TI]*" : "⚙️ *[MANUTENÇÃO]*";
-    
-    $alerta_msg = "🚨 *NOVO CHAMADO #$chamado_id* 🚨\n";
-    $alerta_msg .= "$icone\n\n";
-    $alerta_msg .= "🏥 *Setor:* $nome_setor_msg\n";
-    $alerta_msg .= "📝 *Assunto:* $titulo\n";
-    
-    if($equip_id) {
-        $stmt_eq = $pdo->prepare("SELECT patrimonio, nome FROM equipamentos WHERE id = ?");
-        $stmt_eq->execute([$equip_id]);
-        $eq_info = $stmt_eq->fetch();
-        $alerta_msg .= "📟 *Equipamento:* " . $eq_info['patrimonio'] . " - " . $eq_info['nome'] . "\n";
-    }
-    
-    enviarNotificacaoTelegram($alerta_msg);
+    try {
+        // 1. Inserção no banco principal
+        $stmt = $pdo->prepare("INSERT INTO chamados (setor_id, equipamento_id, usuario_id, titulo, descricao_problema, status) VALUES (?, ?, ?, ?, ?, 'Aberto')");
+        $stmt->execute([$setor_id, $equip_id, $usuario_id_logado, $titulo, $desc]);
+        $chamado_id = $pdo->lastInsertId();
 
-    // --- UPLOAD DE FOTOS ---
-    if (!empty($_FILES['fotos_abertura']['name'][0])) {
-        foreach ($_FILES['fotos_abertura']['name'] as $key => $name) {
-            if ($_FILES['fotos_abertura']['error'][$key] === 0) {
-                $ext = pathinfo($name, PATHINFO_EXTENSION);
-                $novo_nome = "CHAMADO_" . $chamado_id . "_" . time() . "_" . $key . "." . $ext;
-                if (move_uploaded_file($_FILES['fotos_abertura']['tmp_name'][$key], "uploads/" . $novo_nome)) {
-                    if ($key === 0) {
-                        $pdo->prepare("UPDATE chamados SET foto_abertura = ? WHERE id = ?")->execute([$novo_nome, $chamado_id]);
+        // 2. REGISTRO INICIAL NA CRONOLOGIA (com data_registro = NOW())
+        $nome_solicitante = $_SESSION['usuario_nome'] ?? 'Solicitante';
+        $stmt_hist_inicial = $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, data_registro) VALUES (?, ?, ?, 'Aberto', NOW())");
+        $stmt_hist_inicial->execute([$chamado_id, $nome_solicitante, "Problema relatado na abertura: \n" . $desc]);
+
+        // 3. UPLOAD DE FOTOS (Caminho absoluto e log na cronologia)
+        if (!empty($_FILES['fotos_abertura']['name'][0])) {
+            foreach ($_FILES['fotos_abertura']['name'] as $key => $name) {
+                if ($_FILES['fotos_abertura']['error'][$key] === 0) {
+                    $ext = pathinfo($name, PATHINFO_EXTENSION);
+                    $novo_nome = "CHAMADO_" . $chamado_id . "_" . time() . "_" . $key . "." . $ext;
+                    
+                    // Caminho absoluto do servidor
+                    $caminho_destino = __DIR__ . "/uploads/" . $novo_nome;
+
+                    if (move_uploaded_file($_FILES['fotos_abertura']['tmp_name'][$key], $caminho_destino)) {
+                        if ($key === 0) {
+                            $pdo->prepare("UPDATE chamados SET foto_abertura = ? WHERE id = ?")->execute([$novo_nome, $chamado_id]);
+                        }
+                        $stmt_hist_foto = $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, ?, 'Aberto', ?, NOW())");
+                        $stmt_hist_foto->execute([$chamado_id, 'Sistema', 'Evidência fotográfica anexada.', $novo_nome]);
                     }
-                    $stmt_hist = $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico) VALUES (?, ?, ?, 'Aberto', ?)");
-                    $stmt_hist->execute([$chamado_id, 'Sistema', 'Evidência fotográfica anexada na abertura.', $novo_nome]);
                 }
             }
         }
+
+        $pdo->commit();
+
+        // 4. Notificação Telegram
+        $nome_setor_msg = getCaminhoSetor($setor_id, $setores_raw);
+        $icone = ($categoria === 'TI') ? "🖥️ *[TI]*" : "⚙️ *[MANUTENÇÃO]*";
+
+        $alerta_msg = "🚨 *NOVO CHAMADO #$chamado_id* 🚨\n$icone\n\n🏥 *Setor:* $nome_setor_msg\n📝 *Assunto:* $titulo\n";
+        if($equip_id) {
+            $stmt_eq = $pdo->prepare("SELECT patrimonio, nome FROM equipamentos WHERE id = ?");
+            $stmt_eq->execute([$equip_id]);
+            $eq_info = $stmt_eq->fetch();
+            $alerta_msg .= "📟 *Equipamento:* " . $eq_info['patrimonio'] . " - " . $eq_info['nome'] . "\n";
+        }
+        enviarNotificacaoTelegram($alerta_msg);
+
+        echo "<script>window.location.href='index.php?p=chamados&sucesso=1';</script>";
+        exit;
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        die("Erro ao salvar o chamado: " . $e->getMessage());
     }
-    echo "<script>window.location.href='index.php?p=chamados&sucesso=1';</script>";
-    exit;
 }
 
 // 3. Busca de chamados
@@ -113,7 +127,7 @@ $chamados = $stmt_c->fetchAll();
 <?php endif; ?>
 
 <div class="row">
-    <?php foreach($chamados as $c): 
+    <?php foreach($chamados as $c):
         $border_color = ($c['status'] == 'Aberto') ? 'border-danger' : (($c['status'] == 'Em Atendimento') ? 'border-warning' : 'border-success');
     ?>
     <div class="col-md-6 mb-3 text-dark">
@@ -143,9 +157,9 @@ $chamados = $stmt_c->fetchAll();
                 <h5 class="modal-title fw-bold"><i class="bi bi-megaphone"></i> Nova Solicitação</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            
+
             <div class="modal-body">
-                <div id="seletor-inicial" class="text-center py-3">
+                <div id="seletor-inicial" class="text-center py-3" style="display: none;">
                     <p class="fw-bold mb-3">Qual a natureza do seu problema?</p>
                     <div class="row g-2">
                         <div class="col-6">
@@ -163,9 +177,9 @@ $chamados = $stmt_c->fetchAll();
                     </div>
                 </div>
 
-                <div id="campos-formulario" style="display: none;">
-                    <input type="hidden" name="categoria_chamado" id="categoria_input">
-                    
+                <div id="campos-formulario" style="display: block;">
+                    <input type="hidden" name="categoria_chamado" id="categoria_input" value="Equipamento">
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Localização</label>
                         <select name="setor_id" id="setor_select" class="form-select" required onchange="filtrarEquipamentos()">
@@ -192,11 +206,11 @@ $chamados = $stmt_c->fetchAll();
                         </select>
                     </div>
 
-                    <div id="bloco-equipamento" class="mb-3" style="display:none;">
+                    <div id="bloco-equipamento" class="mb-3" style="display:block;">
                         <label class="form-label fw-bold">Equipamento</label>
                         <select name="equipamento_id" id="equipamento_select" class="form-select">
                             <option value="" data-setor="todos">-- Selecione o Patrimônio --</option>
-                            <?php foreach($equips as $eq): 
+                            <?php foreach($equips as $eq):
                                 $selected_eq = ($eq['id'] == $equip_selecionado_id) ? 'selected' : '';
                             ?>
                                 <option value="<?= $eq['id'] ?>" data-setor="<?= $eq['setor_id'] ?>" <?= $selected_eq ?>>
@@ -223,8 +237,7 @@ $chamados = $stmt_c->fetchAll();
                 </div>
             </div>
 
-            <div class="modal-footer bg-light" id="rodape-modal" style="display: none;">
-                <button type="button" class="btn btn-sm btn-link text-muted" onclick="voltarSeletor()">← Alterar Categoria</button>
+            <div class="modal-footer bg-light" id="rodape-modal" style="display: flex;">
                 <button type="submit" name="abrir_chamado" class="btn btn-danger flex-grow-1 fw-bold shadow">ENVIAR SOLICITAÇÃO</button>
             </div>
         </form>
@@ -232,6 +245,7 @@ $chamados = $stmt_c->fetchAll();
 </div>
 
 <script>
+// Mantidas para flexibilidade futura se o módulo de TI for reativado
 function escolherTipo(tipo) {
     document.getElementById('seletor-inicial').style.display = 'none';
     document.getElementById('campos-formulario').style.display = 'block';
@@ -269,16 +283,10 @@ document.addEventListener("DOMContentLoaded", function() {
     if (urlParams.has('setor_id') || urlParams.has('equipamento_id')) {
         var myModal = new bootstrap.Modal(document.getElementById('modalChamado'));
         myModal.show();
-        // Se vier de QR Code, assume que é Equipamento
-        escolherTipo('Equipamento');
     }
 });
 
-// Limpar ao fechar modal
-document.getElementById('modalChamado').addEventListener('hidden.bs.modal', function () {
-    voltarSeletor();
-});
-
+// Atualiza a página caso o usuário deixe a aba aberta e inativa por muito tempo
 setInterval(function(){
     if(!document.querySelector('.modal.show')){
         window.location.reload();

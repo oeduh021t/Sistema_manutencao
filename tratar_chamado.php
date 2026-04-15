@@ -42,7 +42,7 @@ if (isset($_POST['adicionar_item_estoque'])) {
             $upd->execute([$qtd_usada, $item_id]);
 
             $msg_estoque = "Peça utilizada: " . $qtd_usada . "x " . $item_info['nome'];
-            $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento) VALUES (?, ?, ?, ?)")
+            $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, data_registro) VALUES (?, ?, ?, ?, NOW())")
                 ->execute([$id, $_SESSION['usuario_nome'], $msg_estoque, 'Em Atendimento']);
 
             $pdo->commit();
@@ -57,58 +57,89 @@ if (isset($_POST['adicionar_item_estoque'])) {
     }
 }
 
-// --- LÓGICA DE ATUALIZAÇÃO DO CHAMADO (EDITADO PARA LIMPAR CAMPO) ---
+// --- LÓGICA DE ATUALIZAÇÃO DO CHAMADO (BLINDADA) ---
 if (isset($_POST['atualizar_chamado'])) {
     try {
-        $anotacao = $_POST['descricao_solucao']; 
+        $anotacao = trim($_POST['descricao_solucao']);
         $status = $_POST['status'];
         $tecnico = $_POST['tecnico_responsavel'];
         $causa_raiz = $_POST['causa_raiz'] ?? 'Não Informada';
         $tipo_atendimento = $_POST['tipo_atendimento'] ?? 'Interno';
         $nota_fornecedor = $_POST['nota_fornecedor'] ?? 0;
-        
+
         $fornecedor_id = !empty($_POST['fornecedor_id']) ? $_POST['fornecedor_id'] : null;
         $tecnico_externo = !empty($_POST['tecnico_externo_nome']) ? $_POST['tecnico_externo_nome'] : null;
         $nf = !empty($_POST['nf_referencia']) ? $_POST['nf_referencia'] : null;
         $custo = !empty($_POST['custo_servico']) ? $_POST['custo_servico'] : 0;
 
-        $data_atual = date('Y-m-d H:i:s');
-        $data_conclusao = ($status == 'Concluído') ? $data_atual : null;
+        $data_conclusao = ($status == 'Concluído') ? date('Y-m-d H:i:s') : null;
 
         $pdo->beginTransaction();
 
-        // EDITADO: Removi 'descricao_solucao = ?' do UPDATE para que o campo não fique acumulando texto antigo na tabela principal
-        $sql = "UPDATE chamados SET 
-                status = ?, data_conclusao = ?, tecnico_responsavel = ?,
-                nf_referencia = ?, custo_servico = ?, causa_raiz = ?,
-                tipo_atendimento = ?, nota_fornecedor = ?, fornecedor_id = ?, tecnico_externo_nome = ?
-                WHERE id = ?";
-        
-        $pdo->prepare($sql)->execute([
-            $status, $data_conclusao, $tecnico, 
-            $nf, $custo, $causa_raiz, $tipo_atendimento, 
-            $nota_fornecedor, $fornecedor_id, $tecnico_externo, $id
-        ]);
+        // 1. Atualiza a tabela principal (Se for concluído, salva a descrição para o ver_chamado.php)
+        if ($status == 'Concluído') {
+            $sql = "UPDATE chamados SET
+                    status = ?, data_conclusao = ?, tecnico_responsavel = ?,
+                    nf_referencia = ?, custo_servico = ?, causa_raiz = ?,
+                    tipo_atendimento = ?, nota_fornecedor = ?, fornecedor_id = ?, tecnico_externo_nome = ?,
+                    descricao_solucao = ?
+                    WHERE id = ?";
+            $pdo->prepare($sql)->execute([
+                $status, $data_conclusao, $tecnico, $nf, $custo, $causa_raiz,
+                $tipo_atendimento, $nota_fornecedor, $fornecedor_id, $tecnico_externo, $anotacao, $id
+            ]);
+        } else {
+            $sql = "UPDATE chamados SET
+                    status = ?, data_conclusao = ?, tecnico_responsavel = ?,
+                    nf_referencia = ?, custo_servico = ?, causa_raiz = ?,
+                    tipo_atendimento = ?, nota_fornecedor = ?, fornecedor_id = ?, tecnico_externo_nome = ?
+                    WHERE id = ?";
+            $pdo->prepare($sql)->execute([
+                $status, $data_conclusao, $tecnico, $nf, $custo, $causa_raiz,
+                $tipo_atendimento, $nota_fornecedor, $fornecedor_id, $tecnico_externo, $id
+            ]);
+        }
 
+        // 2. Garante o texto na cronologia independente da foto
+        $id_hist_anotacao = null;
+        if (!empty($anotacao)) {
+            $sql_hist = "INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, data_registro) VALUES (?, ?, ?, ?, NOW())";
+            $pdo->prepare($sql_hist)->execute([$id, $tecnico, $anotacao, $status]);
+            $id_hist_anotacao = $pdo->lastInsertId();
+        }
+
+        // 3. Processa o Upload de Fotos e vincula ao texto
+        $primeira_foto = null;
         if (!empty($_FILES['foto_conclusao']['name'][0])) {
             foreach ($_FILES['foto_conclusao']['name'] as $key => $name) {
-                if ($_FILES['foto_conclusao']['error'][$key] == 0) {
+                if ($_FILES['foto_conclusao']['error'][$key] === 0) {
                     $ext = pathinfo($name, PATHINFO_EXTENSION);
                     $foto_nome = "HIST_" . $id . "_" . time() . "_" . $key . "." . $ext;
-                    
-                    if (move_uploaded_file($_FILES['foto_conclusao']['tmp_name'][$key], "uploads/" . $foto_nome)) {
-                        if ($key === 0 && $status == 'Concluído') {
-                            $pdo->prepare("UPDATE chamados SET foto_conclusao = ? WHERE id = ?")->execute([$foto_nome, $id]);
+
+                    // CORREÇÃO: Usar o caminho ABSOLUTO do servidor
+                    $caminho_destino = __DIR__ . "/uploads/" . $foto_nome;
+
+                    if (move_uploaded_file($_FILES['foto_conclusao']['tmp_name'][$key], $caminho_destino)) {
+                        if ($primeira_foto === null) {
+                            $primeira_foto = $foto_nome;
+
+                            if ($id_hist_anotacao) {
+                                $pdo->prepare("UPDATE chamados_historico SET foto_historico = ? WHERE id = ?")->execute([$foto_nome, $id_hist_anotacao]);
+                            } else {
+                                $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, 'Evidência fotográfica', ?, ?, NOW())")->execute([$id, $tecnico, $status, $foto_nome]);
+                            }
+                        } else {
+                            $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, 'Anexo fotográfico extra', ?, ?, NOW())")->execute([$id, $tecnico, $status, $foto_nome]);
                         }
-                        $sql_hist = "INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, ?, ?, ?, ?)";
-                        $pdo->prepare($sql_hist)->execute([$id, $tecnico, ($key === 0 ? $anotacao : "Anexo Adicional"), $status, $foto_nome, $data_atual]);
                     }
                 }
             }
-        } else {
-            if (!empty($anotacao)) {
-                $sql_hist = "INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, data_registro) VALUES (?, ?, ?, ?, ?)";
-                $pdo->prepare($sql_hist)->execute([$id, $tecnico, $anotacao, $status, $data_atual]);
+
+            // Tenta salvar a foto principal na tabela de chamados
+            if ($status == 'Concluído' && $primeira_foto) {
+                try {
+                    $pdo->prepare("UPDATE chamados SET foto_conclusao = ? WHERE id = ?")->execute([$primeira_foto, $id]);
+                } catch(PDOException $e) { }
             }
         }
 
@@ -158,11 +189,11 @@ $logs = $logs->fetchAll();
                         <div class="border-start border-3 border-primary ps-3 pb-3 mb-3 position-relative text-dark">
                             <i class="bi bi-circle-fill text-primary position-absolute" style="left: -9px; top: 0; font-size: 0.8rem;"></i>
                             <small class="text-muted d-block"><?= date('d/m H:i', strtotime($l['data_registro'])) ?> - <b><?= $l['status_momento'] ?></b></small>
-                            <div class="fw-bold small"><?= $l['tecnico_nome'] ?></div>
+                            <div class="fw-bold small"><?= htmlspecialchars($l['tecnico_nome']) ?></div>
                             <div class="bg-light p-2 rounded small border mt-1 text-dark"><?= nl2br(htmlspecialchars($l['texto_historico'])) ?></div>
                             <?php if(!empty($l['foto_historico'])): ?>
                                 <a href="uploads/<?= $l['foto_historico'] ?>" target="_blank">
-                                    <img src="uploads/<?= $l['foto_historico'] ?>" class="img-fluid rounded border mt-2 shadow-sm" style="max-height: 100px;">
+                                    <img src="uploads/<?= $l['foto_historico'] ?>" class="img-fluid rounded border mt-2 shadow-sm" style="max-height: 120px;">
                                 </a>
                             <?php endif; ?>
                         </div>
@@ -209,7 +240,7 @@ $logs = $logs->fetchAll();
                                 $total_materiais += $sub;
                             ?>
                             <tr>
-                                <td><?= $u['nome'] ?></td>
+                                <td><?= htmlspecialchars($u['nome']) ?></td>
                                 <td class="text-center"><?= $u['quantidade'] ?></td>
                                 <td class="text-end">R$ <?= number_format($sub, 2, ',', '.') ?></td>
                             </tr>
