@@ -112,10 +112,14 @@ if (isset($_POST['atualizar_chamado'])) {
     }
 }
 
-// Busca dados para exibição
+// Busca dados atuais do chamado para a trava
 $stmt = $pdo->prepare("SELECT c.*, e.patrimonio, e.nome as eq_nome FROM chamados c LEFT JOIN equipamentos e ON c.equipamento_id = e.id WHERE c.id = ?");
 $stmt->execute([$id]);
 $chamado = $stmt->fetch();
+
+// DEFINIÇÃO DA TRAVA
+$trava = ($chamado['status'] == 'Concluído') ? 'disabled' : '';
+
 $caminho_setor = getCaminhoCompletoTratamento($chamado['setor_id'], $setores_mapa);
 $logs = $pdo->prepare("SELECT * FROM chamados_historico WHERE chamado_id = ? ORDER BY data_registro DESC");
 $logs->execute([$id]);
@@ -165,7 +169,7 @@ $logs = $logs->fetchAll();
                     <form method="POST" class="row g-2 align-items-end mb-3">
                         <div class="col-8">
                             <label class="small fw-bold">Item do Estoque</label>
-                            <select name="item_id" class="form-select form-select-sm" required>
+                            <select name="item_id" class="form-select form-select-sm" required <?= $trava ?>>
                                 <option value="">-- Selecione --</option>
                                 <?php $itens_estoque = $pdo->query("SELECT * FROM itens_estoque WHERE quantidade > 0 ORDER BY nome ASC")->fetchAll();
                                 foreach($itens_estoque as $it): ?>
@@ -175,8 +179,8 @@ $logs = $logs->fetchAll();
                         </div>
                         <div class="col-4">
                             <div class="input-group input-group-sm">
-                                <input type="number" name="qtd_usada" class="form-control" value="1" min="1">
-                                <button type="submit" name="adicionar_item_estoque" class="btn btn-primary"><i class="bi bi-plus"></i></button>
+                                <input type="number" name="qtd_usada" class="form-control" value="1" min="1" <?= $trava ?>>
+                                <button type="submit" name="adicionar_item_estoque" class="btn btn-primary" <?= $trava ?>><i class="bi bi-plus"></i></button>
                             </div>
                         </div>
                     </form>
@@ -189,12 +193,18 @@ $logs = $logs->fetchAll();
                 <div class="card-header bg-success text-white fw-bold small text-uppercase">Conclusão Técnica</div>
                 <div class="card-body">
                     
+                    <?php if($trava): ?>
+                        <div class="alert alert-warning py-2 mb-3 small border-0 shadow-sm">
+                            <i class="bi bi-lock-fill"></i> Este chamado está <strong>Concluído</strong>. O formulário técnico foi bloqueado para edições.
+                        </div>
+                    <?php endif; ?>
+
                     <div class="mb-4 text-center">
                         <label class="form-label d-block fw-bold small text-muted text-uppercase">Origem da Execução</label>
                         <div class="btn-group w-100 shadow-sm">
-                            <input type="radio" class="btn-check" name="tipo_atendimento" id="tipoI" value="Interno" <?= ($chamado['tipo_atendimento'] != 'Externo') ? 'checked' : '' ?> onclick="document.getElementById('secao_externa').style.display='none'">
+                            <input type="radio" class="btn-check" name="tipo_atendimento" id="tipoI" value="Interno" <?= ($chamado['tipo_atendimento'] != 'Externo') ? 'checked' : '' ?> onclick="document.getElementById('secao_externa').style.display='none'" <?= $trava ?>>
                             <label class="btn btn-outline-primary fw-bold" for="tipoI">EQUIPE INTERNA</label>
-                            <input type="radio" class="btn-check" name="tipo_atendimento" id="tipoE" value="Externo" <?= ($chamado['tipo_atendimento'] == 'Externo') ? 'checked' : '' ?> onclick="document.getElementById('secao_externa').style.display='block'">
+                            <input type="radio" class="btn-check" name="tipo_atendimento" id="tipoE" value="Externo" <?= ($chamado['tipo_atendimento'] == 'Externo') ? 'checked' : '' ?> onclick="document.getElementById('secao_externa').style.display='block'" <?= $trava ?>>
                             <label class="btn btn-outline-danger fw-bold" for="tipoE">FORNECEDOR</label>
                         </div>
                     </div>
@@ -203,7 +213,7 @@ $logs = $logs->fetchAll();
                         <div class="row g-2">
                             <div class="col-md-6">
                                 <label class="small fw-bold">Fornecedor</label>
-                                <select name="fornecedor_id" class="form-select">
+                                <select name="fornecedor_id" class="form-select" <?= $trava ?>>
                                     <option value="">-- Escolha --</option>
                                     <?php foreach($fornecedores_lista as $forn): ?>
                                         <option value="<?= $forn['id'] ?>" <?= ($chamado['fornecedor_id'] == $forn['id']) ? 'selected' : '' ?>><?= $forn['nome_fantasia'] ?></option>
@@ -213,8 +223,8 @@ $logs = $logs->fetchAll();
                             <div class="col-md-6">
                                 <label class="small fw-bold">NF / Custo R$</label>
                                 <div class="input-group">
-                                    <input type="text" name="nf_referencia" class="form-control" placeholder="NF" value="<?= $chamado['nf_referencia'] ?>">
-                                    <input type="number" step="0.01" name="custo_servico" class="form-control" value="<?= $chamado['custo_servico'] ?>">
+                                    <input type="text" name="nf_referencia" class="form-control" placeholder="NF" value="<?= $chamado['nf_referencia'] ?>" <?= $trava ?>>
+                                    <input type="number" step="0.01" name="custo_servico" class="form-control" value="<?= $chamado['custo_servico'] ?>" <?= $trava ?>>
                                 </div>
                             </div>
                         </div>
@@ -223,7 +233,7 @@ $logs = $logs->fetchAll();
                     <div class="row mb-3">
                         <div class="col-6">
                             <label class="small fw-bold">Status Atual</label>
-                            <select name="status" class="form-select border-2">
+                            <select name="status" class="form-select border-2" <?= $trava ?>>
                                 <option value="Aberto" <?= $chamado['status'] == 'Aberto' ? 'selected' : '' ?>>Aberto</option>
                                 <option value="Em Atendimento" <?= $chamado['status'] == 'Em Atendimento' ? 'selected' : '' ?>>Em Atendimento</option>
                                 <option value="Concluído" <?= $chamado['status'] == 'Concluído' ? 'selected' : '' ?>>Concluído</option>
@@ -239,34 +249,36 @@ $logs = $logs->fetchAll();
                     <div class="mb-3">
                         <label class="form-label fw-bold text-success text-uppercase small">Ações Rápidas (Toque para preencher)</label>
                         <div class="row g-2">
-                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Realizada limpeza técnica e lubrificação.')"><i class="bi bi-droplet"></i> Limpeza</button></div>
-                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Realizada troca de componente danificado.')"><i class="bi bi-recycle"></i> Troca Peça</button></div>
-                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Equipamento testado e em pleno funcionamento.')"><i class="bi bi-check-all"></i> Testado</button></div>
-                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Ajuste de configuração e calibração.')"><i class="bi bi-gear"></i> Ajuste</button></div>
-                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Aguardando chegada de peças externas.')"><i class="bi bi-clock"></i> Aguard. Peça</button></div>
-                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Nenhum defeito constatado na visita.')"><i class="bi bi-question"></i> S/ Defeito</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Realizada limpeza técnica e lubrificação.')" <?= $trava ?>><i class="bi bi-droplet"></i> Limpeza</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Realizada troca de componente danificado.')" <?= $trava ?>><i class="bi bi-recycle"></i> Troca Peça</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Equipamento testado e em pleno funcionamento.')" <?= $trava ?>><i class="bi bi-check-all"></i> Testado</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Ajuste de configuração e calibração.')" <?= $trava ?>><i class="bi bi-gear"></i> Ajuste</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Aguardando chegada de peças externas.')" <?= $trava ?>><i class="bi bi-clock"></i> Aguard. Peça</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Nenhum defeito constatado na visita.')" <?= $trava ?>><i class="bi bi-question"></i> S/ Defeito</button></div>
                         </div>
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label fw-bold text-primary text-uppercase small">Relatório do Atendimento</label>
-                        <textarea name="descricao_solucao" id="campo_descricao" class="form-control border-primary bg-light" rows="4" required></textarea>
+                        <textarea name="descricao_solucao" id="campo_descricao" class="form-control border-primary bg-light" rows="4" required <?= $trava ?>></textarea>
                     </div>
 
                     <div class="mb-3 p-3 border rounded bg-warning bg-opacity-10 text-center">
                         <label class="form-label fw-bold small text-dark"><i class="bi bi-camera"></i> ANEXAR FOTOS / EVIDÊNCIAS</label>
-                        <input type="file" name="foto_conclusao[]" class="form-control" multiple>
+                        <input type="file" name="foto_conclusao[]" class="form-control" multiple <?= $trava ?>>
                     </div>
 
                 </div>
 
                 <div class="card-footer bg-light p-3 d-flex justify-content-between gap-2">
-                    <button type="submit" name="atualizar_chamado" class="btn btn-success btn-lg flex-grow-1 fw-bold shadow">
-                        <i class="bi bi-save me-2"></i>SALVAR ATUALIZAÇÃO
-                    </button>
-                    
+                    <?php if(!$trava): ?>
+                        <button type="submit" name="atualizar_chamado" class="btn btn-success btn-lg flex-grow-1 fw-bold shadow">
+                            <i class="bi bi-save me-2"></i>SALVAR ATUALIZAÇÃO
+                        </button>
+                    <?php endif; ?>
+
                     <?php if ($chamado['status'] == 'Concluído'): ?>
-                        <a href="imprimir_os.php?id=<?= $id ?>" target="_blank" class="btn btn-dark btn-lg fw-bold shadow">
+                        <a href="imprimir_os.php?id=<?= $id ?>" target="_blank" class="btn btn-dark btn-lg flex-grow-1 fw-bold shadow">
                             <i class="bi bi-printer me-2"></i>IMPRIMIR OS
                         </a>
                     <?php endif; ?>
@@ -279,6 +291,8 @@ $logs = $logs->fetchAll();
 <script>
 function addTexto(t) {
     let c = document.getElementById('campo_descricao');
-    c.value = (c.value == "") ? t : c.value + " " + t;
+    if(!c.disabled) {
+        c.value = (c.value == "") ? t : c.value + " " + t;
+    }
 }
 </script>
