@@ -5,6 +5,9 @@ include_once 'includes/db.php';
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
+// Captura o técnico logado na sessão
+$nome_tecnico_logado = $_SESSION['usuario_nome'] ?? 'Técnico Não Identificado';
+
 // 1. Mapa de setores para construir a hierarquia
 $setores_mapa = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetchAll(PDO::FETCH_UNIQUE);
 
@@ -53,11 +56,11 @@ if (isset($_POST['adicionar_item_estoque'])) {
             die("Erro ao baixar estoque: " . $e->getMessage());
         }
     } else {
-        echo "<script>alert('Estoque insuficiente para este item!');</script>";
+        echo "<script>alert('Estoque insuficiente!');</script>";
     }
 }
 
-// --- LÓGICA DE ATUALIZAÇÃO DO CHAMADO (BLINDADA) ---
+// --- LÓGICA DE ATUALIZAÇÃO DO CHAMADO ---
 if (isset($_POST['atualizar_chamado'])) {
     try {
         $anotacao = trim($_POST['descricao_solucao']);
@@ -76,70 +79,27 @@ if (isset($_POST['atualizar_chamado'])) {
 
         $pdo->beginTransaction();
 
-        // 1. Atualiza a tabela principal (Se for concluído, salva a descrição para o ver_chamado.php)
         if ($status == 'Concluído') {
-            $sql = "UPDATE chamados SET
-                    status = ?, data_conclusao = ?, tecnico_responsavel = ?,
-                    nf_referencia = ?, custo_servico = ?, causa_raiz = ?,
-                    tipo_atendimento = ?, nota_fornecedor = ?, fornecedor_id = ?, tecnico_externo_nome = ?,
-                    descricao_solucao = ?
-                    WHERE id = ?";
-            $pdo->prepare($sql)->execute([
-                $status, $data_conclusao, $tecnico, $nf, $custo, $causa_raiz,
-                $tipo_atendimento, $nota_fornecedor, $fornecedor_id, $tecnico_externo, $anotacao, $id
-            ]);
+            $sql = "UPDATE chamados SET status = ?, data_conclusao = ?, tecnico_responsavel = ?, nf_referencia = ?, custo_servico = ?, causa_raiz = ?, tipo_atendimento = ?, nota_fornecedor = ?, fornecedor_id = ?, tecnico_externo_nome = ?, descricao_solucao = ? WHERE id = ?";
+            $pdo->prepare($sql)->execute([$status, $data_conclusao, $tecnico, $nf, $custo, $causa_raiz, $tipo_atendimento, $nota_fornecedor, $fornecedor_id, $tecnico_externo, $anotacao, $id]);
         } else {
-            $sql = "UPDATE chamados SET
-                    status = ?, data_conclusao = ?, tecnico_responsavel = ?,
-                    nf_referencia = ?, custo_servico = ?, causa_raiz = ?,
-                    tipo_atendimento = ?, nota_fornecedor = ?, fornecedor_id = ?, tecnico_externo_nome = ?
-                    WHERE id = ?";
-            $pdo->prepare($sql)->execute([
-                $status, $data_conclusao, $tecnico, $nf, $custo, $causa_raiz,
-                $tipo_atendimento, $nota_fornecedor, $fornecedor_id, $tecnico_externo, $id
-            ]);
+            $sql = "UPDATE chamados SET status = ?, data_conclusao = ?, tecnico_responsavel = ?, nf_referencia = ?, custo_servico = ?, causa_raiz = ?, tipo_atendimento = ?, nota_fornecedor = ?, fornecedor_id = ?, tecnico_externo_nome = ? WHERE id = ?";
+            $pdo->prepare($sql)->execute([$status, $data_conclusao, $tecnico, $nf, $custo, $causa_raiz, $tipo_atendimento, $nota_fornecedor, $fornecedor_id, $tecnico_externo, $id]);
         }
 
-        // 2. Garante o texto na cronologia independente da foto
-        $id_hist_anotacao = null;
         if (!empty($anotacao)) {
-            $sql_hist = "INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, data_registro) VALUES (?, ?, ?, ?, NOW())";
-            $pdo->prepare($sql_hist)->execute([$id, $tecnico, $anotacao, $status]);
-            $id_hist_anotacao = $pdo->lastInsertId();
+            $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, data_registro) VALUES (?, ?, ?, ?, NOW())")->execute([$id, $tecnico, $anotacao, $status]);
         }
 
-        // 3. Processa o Upload de Fotos e vincula ao texto
-        $primeira_foto = null;
         if (!empty($_FILES['foto_conclusao']['name'][0])) {
             foreach ($_FILES['foto_conclusao']['name'] as $key => $name) {
                 if ($_FILES['foto_conclusao']['error'][$key] === 0) {
                     $ext = pathinfo($name, PATHINFO_EXTENSION);
                     $foto_nome = "HIST_" . $id . "_" . time() . "_" . $key . "." . $ext;
-
-                    // CORREÇÃO: Usar o caminho ABSOLUTO do servidor
-                    $caminho_destino = __DIR__ . "/uploads/" . $foto_nome;
-
-                    if (move_uploaded_file($_FILES['foto_conclusao']['tmp_name'][$key], $caminho_destino)) {
-                        if ($primeira_foto === null) {
-                            $primeira_foto = $foto_nome;
-
-                            if ($id_hist_anotacao) {
-                                $pdo->prepare("UPDATE chamados_historico SET foto_historico = ? WHERE id = ?")->execute([$foto_nome, $id_hist_anotacao]);
-                            } else {
-                                $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, 'Evidência fotográfica', ?, ?, NOW())")->execute([$id, $tecnico, $status, $foto_nome]);
-                            }
-                        } else {
-                            $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, 'Anexo fotográfico extra', ?, ?, NOW())")->execute([$id, $tecnico, $status, $foto_nome]);
-                        }
+                    if (move_uploaded_file($_FILES['foto_conclusao']['tmp_name'][$key], __DIR__ . "/uploads/" . $foto_nome)) {
+                        $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, 'Anexo fotográfico', ?, ?, NOW())")->execute([$id, $tecnico, $status, $foto_nome]);
                     }
                 }
-            }
-
-            // Tenta salvar a foto principal na tabela de chamados
-            if ($status == 'Concluído' && $primeira_foto) {
-                try {
-                    $pdo->prepare("UPDATE chamados SET foto_conclusao = ? WHERE id = ?")->execute([$primeira_foto, $id]);
-                } catch(PDOException $e) { }
             }
         }
 
@@ -148,31 +108,31 @@ if (isset($_POST['atualizar_chamado'])) {
         exit;
     } catch (Exception $e) {
         $pdo->rollBack();
-        die("<div class='alert alert-danger'>ERRO TÉCNICO: " . $e->getMessage() . "</div>");
+        die("Erro técnico: " . $e->getMessage());
     }
 }
 
-// --- BUSCA DE DADOS PARA EXIBIÇÃO ---
+// Busca dados para exibição
 $stmt = $pdo->prepare("SELECT c.*, e.patrimonio, e.nome as eq_nome FROM chamados c LEFT JOIN equipamentos e ON c.equipamento_id = e.id WHERE c.id = ?");
 $stmt->execute([$id]);
 $chamado = $stmt->fetch();
-if (!$chamado) { die("Chamado inválido."); }
-
 $caminho_setor = getCaminhoCompletoTratamento($chamado['setor_id'], $setores_mapa);
 $logs = $pdo->prepare("SELECT * FROM chamados_historico WHERE chamado_id = ? ORDER BY data_registro DESC");
 $logs->execute([$id]);
 $logs = $logs->fetchAll();
 ?>
 
+<style>
+    .btn-acao { height: 60px; display: flex; align-items: center; justify-content: center; font-weight: bold; border-width: 2px; }
+    .btn-acao i { font-size: 1.2rem; margin-right: 8px; }
+</style>
+
 <div class="container-fluid py-3 text-dark">
     <?php if(isset($_GET['sucesso'])): ?>
         <div class="alert alert-success shadow-sm border-0"><i class="bi bi-check-circle-fill me-2"></i> Atualização salva com sucesso!</div>
     <?php endif; ?>
-    <?php if(isset($_GET['sucesso_item'])): ?>
-        <div class="alert alert-primary shadow-sm border-0"><i class="bi bi-box-seam me-2"></i> Peça adicionada e estoque atualizado!</div>
-    <?php endif; ?>
 
-    <div class="d-flex justify-content-between align-items-center mb-3 text-dark">
+    <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h3 class="fw-bold mb-0 text-dark"><i class="bi bi-wrench-adjustable text-primary"></i> Atendimento #<?= $id ?></h3>
             <span class="badge bg-light text-dark border mt-1"><i class="bi bi-geo-alt text-danger"></i> <?= htmlspecialchars($caminho_setor) ?></span>
@@ -183,18 +143,16 @@ $logs = $logs->fetchAll();
     <div class="row">
         <div class="col-md-5">
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-dark text-white fw-bold small text-uppercase">Cronologia do Atendimento</div>
-                <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                <div class="card-header bg-dark text-white fw-bold small text-uppercase">Cronologia</div>
+                <div class="card-body" style="max-height: 450px; overflow-y: auto;">
                     <?php foreach($logs as $l): ?>
-                        <div class="border-start border-3 border-primary ps-3 pb-3 mb-3 position-relative text-dark">
-                            <i class="bi bi-circle-fill text-primary position-absolute" style="left: -9px; top: 0; font-size: 0.8rem;"></i>
+                        <div class="border-start border-3 border-primary ps-3 pb-3 mb-3 position-relative">
+                            <i class="bi bi-circle-fill text-primary position-absolute" style="left: -7px; top: 0; font-size: 0.7rem;"></i>
                             <small class="text-muted d-block"><?= date('d/m H:i', strtotime($l['data_registro'])) ?> - <b><?= $l['status_momento'] ?></b></small>
                             <div class="fw-bold small"><?= htmlspecialchars($l['tecnico_nome']) ?></div>
-                            <div class="bg-light p-2 rounded small border mt-1 text-dark"><?= nl2br(htmlspecialchars($l['texto_historico'])) ?></div>
-                            <?php if(!empty($l['foto_historico'])): ?>
-                                <a href="uploads/<?= $l['foto_historico'] ?>" target="_blank">
-                                    <img src="uploads/<?= $l['foto_historico'] ?>" class="img-fluid rounded border mt-2 shadow-sm" style="max-height: 120px;">
-                                </a>
+                            <div class="bg-light p-2 rounded small border mt-1"><?= nl2br(htmlspecialchars($l['texto_historico'])) ?></div>
+                            <?php if($l['foto_historico']): ?>
+                                <img src="uploads/<?= $l['foto_historico'] ?>" class="img-fluid rounded mt-2 shadow-sm" style="max-height: 100px;">
                             <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
@@ -206,145 +164,109 @@ $logs = $logs->fetchAll();
                 <div class="card-body">
                     <form method="POST" class="row g-2 align-items-end mb-3">
                         <div class="col-8">
-                            <label class="small fw-bold text-dark">Item do Estoque</label>
+                            <label class="small fw-bold">Item do Estoque</label>
                             <select name="item_id" class="form-select form-select-sm" required>
-                                <option value="">-- Selecione a peça --</option>
-                                <?php 
-                                $itens_estoque = $pdo->query("SELECT * FROM itens_estoque WHERE quantidade > 0 ORDER BY nome ASC")->fetchAll();
+                                <option value="">-- Selecione --</option>
+                                <?php $itens_estoque = $pdo->query("SELECT * FROM itens_estoque WHERE quantidade > 0 ORDER BY nome ASC")->fetchAll();
                                 foreach($itens_estoque as $it): ?>
                                     <option value="<?= $it['id'] ?>"><?= $it['nome'] ?> (Disp: <?= $it['quantidade'] ?>)</option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="col-4">
-                            <label class="small fw-bold text-dark">Qtd</label>
                             <div class="input-group input-group-sm">
-                                <input type="number" name="qtd_usada" class="form-control" value="1" min="1" required>
-                                <button type="submit" name="adicionar_item_estoque" class="btn btn-primary"><i class="bi bi-plus-lg"></i></button>
+                                <input type="number" name="qtd_usada" class="form-control" value="1" min="1">
+                                <button type="submit" name="adicionar_item_estoque" class="btn btn-primary"><i class="bi bi-plus"></i></button>
                             </div>
                         </div>
                     </form>
-                    
-                    <table class="table table-sm table-bordered small text-dark">
-                        <thead class="table-light">
-                            <tr><th>Peça</th><th class="text-center">Qtd</th><th class="text-end">Custo</th></tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            $usados = $pdo->prepare("SELECT ci.*, i.nome FROM chamados_itens ci JOIN itens_estoque i ON ci.item_id = i.id WHERE ci.chamado_id = ?");
-                            $usados->execute([$id]);
-                            $itens_usados = $usados->fetchAll();
-                            $total_materiais = 0;
-                            foreach($itens_usados as $u):
-                                $sub = $u['quantidade'] * $u['valor_unitario_na_epoca'];
-                                $total_materiais += $sub;
-                            ?>
-                            <tr>
-                                <td><?= htmlspecialchars($u['nome']) ?></td>
-                                <td class="text-center"><?= $u['quantidade'] ?></td>
-                                <td class="text-end">R$ <?= number_format($sub, 2, ',', '.') ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                        <?php if($total_materiais > 0): ?>
-                        <tfoot>
-                            <tr class="table-warning fw-bold text-dark"><td colspan="2">Total Materiais</td><td class="text-end">R$ <?= number_format($total_materiais, 2, ',', '.') ?></td></tr>
-                        </tfoot>
-                        <?php endif; ?>
-                    </table>
                 </div>
             </div>
         </div>
 
         <div class="col-md-7">
             <form method="POST" enctype="multipart/form-data" class="card shadow-sm border-0">
-                <div class="card-header bg-success text-white fw-bold small text-uppercase">Tratativa Técnica e Conclusão</div>
-                <div class="card-body text-dark">
+                <div class="card-header bg-success text-white fw-bold small text-uppercase">Conclusão Técnica</div>
+                <div class="card-body">
                     
                     <div class="mb-4 text-center">
                         <label class="form-label d-block fw-bold small text-muted text-uppercase">Origem da Execução</label>
                         <div class="btn-group w-100 shadow-sm">
                             <input type="radio" class="btn-check" name="tipo_atendimento" id="tipoI" value="Interno" <?= ($chamado['tipo_atendimento'] != 'Externo') ? 'checked' : '' ?> onclick="document.getElementById('secao_externa').style.display='none'">
                             <label class="btn btn-outline-primary fw-bold" for="tipoI">EQUIPE INTERNA</label>
-
                             <input type="radio" class="btn-check" name="tipo_atendimento" id="tipoE" value="Externo" <?= ($chamado['tipo_atendimento'] == 'Externo') ? 'checked' : '' ?> onclick="document.getElementById('secao_externa').style.display='block'">
-                            <label class="btn btn-outline-danger fw-bold" for="tipoE">FORNECEDOR / EXTERNO</label>
+                            <label class="btn btn-outline-danger fw-bold" for="tipoE">FORNECEDOR</label>
                         </div>
                     </div>
 
                     <div id="secao_externa" class="p-3 mb-3 border rounded bg-light" style="display: <?= ($chamado['tipo_atendimento'] == 'Externo') ? 'block' : 'none' ?>;">
-                        <div class="row g-2 text-dark">
+                        <div class="row g-2">
                             <div class="col-md-6">
-                                <label class="small fw-bold">Fornecedor Selecionado</label>
+                                <label class="small fw-bold">Fornecedor</label>
                                 <select name="fornecedor_id" class="form-select">
                                     <option value="">-- Escolha --</option>
                                     <?php foreach($fornecedores_lista as $forn): ?>
-                                        <option value="<?= $forn['id'] ?>" <?= ($chamado['fornecedor_id'] == $forn['id']) ? 'selected' : '' ?>><?= htmlspecialchars($forn['nome_fantasia']) ?></option>
+                                        <option value="<?= $forn['id'] ?>" <?= ($chamado['fornecedor_id'] == $forn['id']) ? 'selected' : '' ?>><?= $forn['nome_fantasia'] ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="small fw-bold">Técnico Externo (Nome)</label>
-                                <input type="text" name="tecnico_externo_nome" class="form-control" value="<?= htmlspecialchars($chamado['tecnico_externo_nome'] ?? '') ?>">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="small fw-bold">NF Referência</label>
-                                <input type="text" name="nf_referencia" class="form-control" value="<?= htmlspecialchars($chamado['nf_referencia'] ?? '') ?>">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="small fw-bold">Custo do Serviço R$</label>
-                                <input type="number" step="0.01" name="custo_servico" class="form-control fw-bold text-danger" value="<?= $chamado['custo_servico'] ?>">
+                                <label class="small fw-bold">NF / Custo R$</label>
+                                <div class="input-group">
+                                    <input type="text" name="nf_referencia" class="form-control" placeholder="NF" value="<?= $chamado['nf_referencia'] ?>">
+                                    <input type="number" step="0.01" name="custo_servico" class="form-control" value="<?= $chamado['custo_servico'] ?>">
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold small text-muted">Status do Atendimento</label>
+                        <div class="col-6">
+                            <label class="small fw-bold">Status Atual</label>
                             <select name="status" class="form-select border-2">
                                 <option value="Aberto" <?= $chamado['status'] == 'Aberto' ? 'selected' : '' ?>>Aberto</option>
                                 <option value="Em Atendimento" <?= $chamado['status'] == 'Em Atendimento' ? 'selected' : '' ?>>Em Atendimento</option>
                                 <option value="Concluído" <?= $chamado['status'] == 'Concluído' ? 'selected' : '' ?>>Concluído</option>
                             </select>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold small text-muted">Técnico Responsável</label>
-                            <select name="tecnico_responsavel" class="form-select" required>
-                                <?php foreach($tecnicos_lista as $tec): ?>
-                                    <option value="<?= $tec['nome'] ?>" <?= ($chamado['tecnico_responsavel'] == $tec['nome']) ? 'selected' : '' ?>><?= $tec['nome'] ?></option>
-                                <?php endforeach; ?>
-                            </select>
+                        <div class="col-6">
+                            <label class="small fw-bold">Técnico Responsável</label>
+                            <input type="text" class="form-control bg-light fw-bold text-success" value="<?= $nome_tecnico_logado ?>" readonly>
+                            <input type="hidden" name="tecnico_responsavel" value="<?= $nome_tecnico_logado ?>">
                         </div>
                     </div>
 
-                    <div class="mb-3 text-dark">
-                        <label class="form-label fw-bold small text-muted text-uppercase">Causa Raiz da Falha</label>
-                        <select name="causa_raiz" class="form-select" required>
-                            <option value="Desgaste Natural" <?= $chamado['causa_raiz'] == 'Desgaste Natural' ? 'selected' : '' ?>>Desgaste Natural</option>
-                            <option value="Mau Uso" <?= $chamado['causa_raiz'] == 'Mau Uso' ? 'selected' : '' ?>>Mau Uso / Queda</option>
-                            <option value="Elétrica" <?= $chamado['causa_raiz'] == 'Elétrica' ? 'selected' : '' ?>>Rede Elétrica / Oscilação</option>
-                            <option value="Configuração" <?= $chamado['causa_raiz'] == 'Configuração' ? 'selected' : '' ?>>Configuração / Software</option>
-                        </select>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-success text-uppercase small">Ações Rápidas (Toque para preencher)</label>
+                        <div class="row g-2">
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Realizada limpeza técnica e lubrificação.')"><i class="bi bi-droplet"></i> Limpeza</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Realizada troca de componente danificado.')"><i class="bi bi-recycle"></i> Troca Peça</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Equipamento testado e em pleno funcionamento.')"><i class="bi bi-check-all"></i> Testado</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Ajuste de configuração e calibração.')"><i class="bi bi-gear"></i> Ajuste</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Aguardando chegada de peças externas.')"><i class="bi bi-clock"></i> Aguard. Peça</button></div>
+                            <div class="col-6 col-sm-4"><button type="button" class="btn btn-outline-dark w-100 btn-acao" onclick="addTexto('Nenhum defeito constatado na visita.')"><i class="bi bi-question"></i> S/ Defeito</button></div>
+                        </div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold text-primary text-uppercase">Descrição da Nova Atualização</label>
-                        <textarea name="descricao_solucao" class="form-control border-primary" rows="4" placeholder="Descreva aqui o que foi feito nesta visita/etapa..." required></textarea>
-                        <small class="text-muted">A anotação será salva na cronologia ao lado.</small>
+                        <label class="form-label fw-bold text-primary text-uppercase small">Relatório do Atendimento</label>
+                        <textarea name="descricao_solucao" id="campo_descricao" class="form-control border-primary bg-light" rows="4" required></textarea>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small text-dark text-uppercase">Anexar Fotos / Evidências (Múltiplas)</label>
+                    <div class="mb-3 p-3 border rounded bg-warning bg-opacity-10 text-center">
+                        <label class="form-label fw-bold small text-dark"><i class="bi bi-camera"></i> ANEXAR FOTOS / EVIDÊNCIAS</label>
                         <input type="file" name="foto_conclusao[]" class="form-control" multiple>
                     </div>
+
                 </div>
 
-                <div class="card-footer bg-light d-flex justify-content-between py-3">
-                    <button type="submit" name="atualizar_chamado" class="btn btn-success fw-bold px-5 shadow">
+                <div class="card-footer bg-light p-3 d-flex justify-content-between gap-2">
+                    <button type="submit" name="atualizar_chamado" class="btn btn-success btn-lg flex-grow-1 fw-bold shadow">
                         <i class="bi bi-save me-2"></i>SALVAR ATUALIZAÇÃO
                     </button>
+                    
                     <?php if ($chamado['status'] == 'Concluído'): ?>
-                        <a href="imprimir_os.php?id=<?= $id ?>" target="_blank" class="btn btn-dark fw-bold">
+                        <a href="imprimir_os.php?id=<?= $id ?>" target="_blank" class="btn btn-dark btn-lg fw-bold shadow">
                             <i class="bi bi-printer me-2"></i>IMPRIMIR OS
                         </a>
                     <?php endif; ?>
@@ -353,3 +275,10 @@ $logs = $logs->fetchAll();
         </div>
     </div>
 </div>
+
+<script>
+function addTexto(t) {
+    let c = document.getElementById('campo_descricao');
+    c.value = (c.value == "") ? t : c.value + " " + t;
+}
+</script>

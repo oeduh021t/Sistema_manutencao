@@ -26,7 +26,7 @@ $investimento_total_geral = array_sum(array_column($equipamentos, 'total_gasto')
             <h3 class="fw-bold mb-0 text-dark">
                 <i class="bi bi-printer-fill d-print-none text-primary me-2"></i>Inventário Patrimonial Geral
             </h3>
-            <small class="text-muted text-uppercase">Hospital Domingos Lourenço - Engenharia Clínica</small>
+            <small class="text-muted text-uppercase">Hospital Domingos Lourenço </small>
         </div>
         <div class="text-end">
             <button onclick="window.print()" class="btn btn-dark d-print-none fw-bold shadow-sm mb-2">

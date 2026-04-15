@@ -112,7 +112,7 @@ foreach ($historico_unificado as $item) {
 <div class="header">
     <div>
         <h1 style="margin:0; font-size: 20px;">PRONTUÁRIO TÉCNICO DE ATIVO</h1>
-        <span>Hospital Domingos Lourenço - Engenharia Clínica</span>
+        <span>Hospital Domingos Lourenço </span>
     </div>
     <div style="text-align: right;">
         <strong>Patrimônio:</strong> <span style="font-size: 16px;"><?= htmlspecialchars($eq['patrimonio']) ?></span><br>
@@ -197,7 +197,7 @@ foreach ($historico_unificado as $item) {
 </div>
 
 <div style="margin-top: 50px; font-size: 9px; color: #999; text-align: center; border-top: 1px solid #eee; padding-top: 10px;">
-    Este documento é um registro histórico oficial do ativo patrimonial. Gerado pelo Sistema MNT em <?= date('d/m/Y H:i:s') ?>.
+    Este documento é um registro histórico oficial do ativo patrimonial. Gerado pelo Sistema SIM-H em <?= date('d/m/Y H:i:s') ?>.
 </div>
 
 </body>

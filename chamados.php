@@ -13,11 +13,9 @@ function enviarNotificacaoTelegram($mensagem) {
 $usuario_id_logado = $_SESSION['usuario_id'];
 $nivel_logado = $_SESSION['usuario_nivel'];
 
-// --- CAPTURA DADOS VINDOS DO QR CODE ---
 $equip_selecionado_id = isset($_GET['equipamento_id']) ? $_GET['equipamento_id'] : null;
 $setor_selecionado_id = isset($_GET['setor_id']) ? $_GET['setor_id'] : null;
 
-// --- LÓGICA DE FILTROS ---
 $busca = isset($_GET['busca']) ? trim($_GET['busca']) : '';
 $status_filtro = isset($_GET['status_filtro']) ? $_GET['status_filtro'] : 'Todos';
 $params = [];
@@ -34,13 +32,12 @@ function getCaminhoSetor($id, $mapa) {
 $setores_raw = $pdo->query("SELECT id, nome, setor_pai_id FROM setores")->fetchAll(PDO::FETCH_UNIQUE);
 $equips = $pdo->query("SELECT id, patrimonio, nome, setor_id FROM equipamentos ORDER BY patrimonio ASC")->fetchAll();
 
-// --- 1. LÓGICA DE ABERTURA DE CHAMADO (RESTAURADA) ---
+// --- 1. LÓGICA DE ABERTURA DE CHAMADO ---
 if (isset($_POST['abrir_chamado'])) {
     $categoria = $_POST['categoria_chamado'];
     $setor_id = $_POST['setor_id'];
     $equip_id = ($categoria === 'Equipamento' && !empty($_POST['equipamento_id'])) ? $_POST['equipamento_id'] : null;
-    $subtipo_ti = isset($_POST['subtipo_ti']) ? "[" . $_POST['subtipo_ti'] . "] " : "";
-    $titulo = $subtipo_ti . $_POST['titulo'];
+    $titulo = $_POST['titulo'];
     $desc = $_POST['descricao'];
 
     $pdo->beginTransaction();
@@ -58,22 +55,19 @@ if (isset($_POST['abrir_chamado'])) {
                 if ($_FILES['fotos_abertura']['error'][$key] === 0) {
                     $ext = pathinfo($name, PATHINFO_EXTENSION);
                     $novo_nome = "CHAMADO_" . $chamado_id . "_" . time() . "_" . $key . "." . $ext;
-                    $caminho_destino = __DIR__ . "/uploads/" . $novo_nome;
-                    if (move_uploaded_file($_FILES['fotos_abertura']['tmp_name'][$key], $caminho_destino)) {
-                        if ($key === 0) {
-                            $pdo->prepare("UPDATE chamados SET foto_abertura = ? WHERE id = ?")->execute([$novo_nome, $chamado_id]);
-                        }
-                        $stmt_hist_foto = $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, ?, 'Aberto', ?, NOW())");
-                        $stmt_hist_foto->execute([$chamado_id, 'Sistema', 'Evidência fotográfica anexada.', $novo_nome]);
+                    move_uploaded_file($_FILES['fotos_abertura']['tmp_name'][$key], __DIR__ . "/uploads/" . $novo_nome);
+                    
+                    if ($key === 0) {
+                        $pdo->prepare("UPDATE chamados SET foto_abertura = ? WHERE id = ?")->execute([$novo_nome, $chamado_id]);
                     }
+                    $pdo->prepare("INSERT INTO chamados_historico (chamado_id, tecnico_nome, texto_historico, status_momento, foto_historico, data_registro) VALUES (?, ?, 'Anexo abertura', 'Aberto', ?, NOW())")->execute([$chamado_id, 'Sistema', $novo_nome]);
                 }
             }
         }
         $pdo->commit();
 
         $nome_setor_msg = getCaminhoSetor($setor_id, $setores_raw);
-        $alerta_msg = "🚨 *NOVO CHAMADO #$chamado_id*\n🏥 *Setor:* $nome_setor_msg\n📝 *Assunto:* $titulo";
-        enviarNotificacaoTelegram($alerta_msg);
+        enviarNotificacaoTelegram("🚨 *NOVO CHAMADO #$chamado_id*\n🏥 *Setor:* $nome_setor_msg\n📝 *Assunto:* $titulo");
 
         echo "<script>window.location.href='index.php?p=chamados&sucesso=1';</script>";
         exit;
@@ -88,8 +82,7 @@ if (isset($_POST['salvar_observacao'])) {
     $id_chamado = $_POST['chamado_id'];
     $nova_obs = trim($_POST['observacao_texto']);
     $nome_coord = $_SESSION['usuario_nome'] ?? 'Coordenador';
-    $data_hora = date('d/m/Y H:i');
-    $texto_formatado = "\n\n--- $data_hora ($nome_coord) ---\n" . $nova_obs;
+    $texto_formatado = "\n\n--- " . date('d/m/Y H:i') . " ($nome_coord) ---\n" . $nova_obs;
     $upd_obs = $pdo->prepare("UPDATE chamados SET observacao_coordenador = CONCAT(COALESCE(observacao_coordenador, ''), ?) WHERE id = ?");
     if ($upd_obs->execute([$texto_formatado, $id_chamado])) {
         echo "<script>window.location.href='index.php?p=chamados&sucesso_obs=1';</script>";
@@ -97,8 +90,7 @@ if (isset($_POST['salvar_observacao'])) {
     }
 }
 
-// 3. Busca de chamados
-$sql_base = "SELECT c.*, s.nome as setor_nome FROM chamados c LEFT JOIN setores s ON c.setor_id = s.id";
+$sql_base = "SELECT c.*, s.nome as setor_nome, e.patrimonio as eq_pat, e.nome as eq_nome FROM chamados c LEFT JOIN setores s ON c.setor_id = s.id LEFT JOIN equipamentos e ON c.equipamento_id = e.id";
 $condicoes = [];
 if ($nivel_logado === 'usuario') { $condicoes[] = "c.usuario_id = ?"; $params[] = $usuario_id_logado; }
 if ($status_filtro !== 'Todos') { $condicoes[] = "c.status = ?"; $params[] = $status_filtro; }
@@ -116,6 +108,20 @@ $chamados = $stmt_c->fetchAll();
     </button>
 </div>
 
+<?php if(isset($_GET['sucesso'])): ?>
+    <div class="alert alert-success border-0 shadow-sm d-flex align-items-center mb-4" role="alert">
+        <i class="bi bi-check-circle-fill fs-4 me-2"></i>
+        <div><strong>Sucesso!</strong> O chamado foi aberto e a equipe técnica já foi notificada.</div>
+    </div>
+<?php endif; ?>
+
+<?php if(isset($_GET['sucesso_obs'])): ?>
+    <div class="alert alert-info border-0 shadow-sm d-flex align-items-center mb-4" role="alert">
+        <i class="bi bi-info-circle-fill fs-4 me-2"></i>
+        <div>Histórico de coordenação atualizado com sucesso!</div>
+    </div>
+<?php endif; ?>
+
 <div class="row">
     <?php foreach($chamados as $c):
         $border_color = ($c['status'] == 'Aberto') ? 'border-danger' : (($c['status'] == 'Em Atendimento') ? 'border-warning' : 'border-success');
@@ -127,16 +133,21 @@ $chamados = $stmt_c->fetchAll();
                     <h5 class="card-title fw-bold text-truncate mb-0" style="max-width: 80%;"><?= htmlspecialchars($c['titulo']) ?></h5>
                     <span class="badge <?= ($c['status'] == 'Aberto') ? 'bg-danger' : (($c['status'] == 'Em Atendimento') ? 'bg-warning text-dark' : 'bg-success') ?>"><?= $c['status'] ?></span>
                 </div>
-                <h6 class="text-muted small mb-3">#<?= $c['id'] ?> - <?= htmlspecialchars($c['setor_nome']) ?></h6>
+                <h6 class="text-muted small mb-3">
+                    #<?= $c['id'] ?> - <?= htmlspecialchars($c['setor_nome']) ?>
+                    <?php if(!empty($c['eq_nome'])): ?>
+                        <span class="text-primary fw-bold"> - [<?= $c['eq_pat'] ?>] <?= htmlspecialchars($c['eq_nome']) ?></span>
+                    <?php endif; ?>
+                </h6>
                 
                 <div class="d-flex gap-2 mb-3">
-                    <a href="index.php?p=ver_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-outline-secondary px-3">Detalhes</a>
+                    <a href="index.php?p=ver_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-outline-secondary">Detalhes</a>
                     <?php if($c['status'] !== 'Concluído' && $nivel_logado !== 'usuario'): ?>
-                        <a href="index.php?p=tratar_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-primary px-3">Atender</a>
+                        <a href="index.php?p=tratar_chamado&id=<?= $c['id'] ?>" class="btn btn-sm btn-primary">Atender</a>
                     <?php endif; ?>
                     <?php if($c['status'] == 'Concluído' && $nivel_logado !== 'usuario'): ?>
                         <textarea id="obs_data_<?= $c['id'] ?>" style="display:none;"><?= htmlspecialchars($c['observacao_coordenador'] ?? '') ?></textarea>
-                        <button class="btn btn-sm btn-info text-white shadow-sm px-3" onclick="abrirModalObs(<?= $c['id'] ?>)">
+                        <button class="btn btn-sm btn-info text-white shadow-sm" onclick="abrirModalObs(<?= $c['id'] ?>)">
                             <i class="bi bi-chat-quote"></i> Obs. Coordenação
                         </button>
                     <?php endif; ?>
@@ -163,7 +174,6 @@ $chamados = $stmt_c->fetchAll();
             </div>
             <div class="modal-body">
                 <input type="hidden" name="categoria_chamado" id="categoria_input" value="Equipamento">
-                
                 <div class="mb-3">
                     <label class="form-label fw-bold">Localização</label>
                     <select name="setor_id" id="setor_select" class="form-select" required onchange="filtrarEquipamentos()">
@@ -178,7 +188,6 @@ $chamados = $stmt_c->fetchAll();
                         endforeach; ?>
                     </select>
                 </div>
-
                 <div id="bloco-equipamento" class="mb-3">
                     <label class="form-label fw-bold">Equipamento (Patrimônio)</label>
                     <select name="equipamento_id" id="equipamento_select" class="form-select">
@@ -191,17 +200,14 @@ $chamados = $stmt_c->fetchAll();
                         <?php endforeach; ?>
                     </select>
                 </div>
-
                 <div class="mb-3">
                     <label class="form-label fw-bold">Assunto/Título</label>
-                    <input type="text" name="titulo" class="form-control" placeholder="Ex: Ar condicionado pingando" required>
+                    <input type="text" name="titulo" class="form-control" required>
                 </div>
-
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Descrição Detalhada</label>
-                    <textarea name="descricao" class="form-control" rows="3" placeholder="Descreva o problema..." required></textarea>
+                    <label class="form-label fw-bold">Descrição</label>
+                    <textarea name="descricao" class="form-control" rows="3" required></textarea>
                 </div>
-
                 <div class="mb-3">
                     <label class="form-label fw-bold small">Anexar Fotos</label>
                     <input type="file" name="fotos_abertura[]" class="form-control" accept="image/*" multiple>

@@ -42,7 +42,7 @@ $nivel = $_SESSION['usuario_nivel'];
 <nav id="sidebar">
     <div class="sidebar-header d-flex align-items-center">
         <i class="bi bi-building text-primary me-2 fs-4"></i>
-        GESTÃO HMDL
+        SIM-H
     </div>
 
     <div class="user-panel text-white">
