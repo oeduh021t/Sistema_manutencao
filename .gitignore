@@ -1,13 +1,12 @@
-# Uploads de usuários
-uploads/
-
-# Banco de dados
+# Ignorar arquivos de Banco de Dados
 *.sql
 
-# Arquivos de sessão / cache
-*.log
-cache/
+# Ignorar uploads de imagens e documentos
+uploads/*
+!uploads/.keep
 
-# Configurações sensíveis (se existirem)
-.env
-config/database.php
+# Ignorar logs
+*.log
+
+# (Opcional) Ignorar arquivos com senhas se você for deixar o repositório Público
+includes/db.php

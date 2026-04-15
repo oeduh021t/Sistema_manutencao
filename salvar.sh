@@ -5,9 +5,9 @@ VERDE='\033[0;32m'
 AZUL='\033[0;34m'
 NC='\033[0m' # Sem cor
 
-echo -e "${AZUL}--- Iniciando Automação de Backup (Git) ---${NC}"
+echo -e "${AZUL}--- Iniciando Automação de Backup HMDL ---${NC}"
 
-# 1. Adiciona todas as mudanças
+# 1. Adiciona todas as mudanças (respeitando o .gitignore)
 git add .
 
 # 2. Pergunta qual foi a melhoria realizada
@@ -17,8 +17,12 @@ read mensagem
 # 3. Faz o commit com a sua mensagem
 git commit -m "$mensagem"
 
-# 4. Envia para o servidor de arquivos (UCS)
-echo -e "${AZUL}Enviando para o servidor de arquivos (.254)...${NC}"
+# 4. Envia para o servidor local de arquivos (UCS)
+echo -e "${AZUL}Enviando para o servidor UCS (.254)...${NC}"
 git push origin-backup main
 
-echo -e "${VERDE}✅ Tudo pronto! Alteração salva e código protegido.${NC}"
+# 5. Envia para o GitHub
+echo -e "${AZUL}Enviando para o GitHub...${NC}"
+git push github main
+
+echo -e "${VERDE}✅ Tudo pronto! Código atualizado localmente e na nuvem.${NC}"
