@@ -122,7 +122,7 @@ if (isset($_POST['btn_login'])) {
         </form>
     </div>
     <div class="card-footer bg-light text-center py-3">
-        <small class="text-muted">&copy; 2026 Sistema de Gestão Hospitalar - HMDL</small>
+        <small class="text-muted">&copy; 2026 SIM-H</small>
     </div>
 </div>
 

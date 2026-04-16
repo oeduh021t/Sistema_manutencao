@@ -157,13 +157,14 @@ $nivel = $_SESSION['usuario_nivel'];
             </a>
          </li>
 
-        <li class="nav-item mt-auto border-top border-secondary">
-            <a href="logout.php" class="nav-link text-danger py-3">
+        <li class="nav-item border-top border-secondary mt-2">
+            <a href="logout.php" class="nav-link text-danger py-3 fw-bold">
                 <i class="bi bi-box-arrow-left me-2"></i> Sair do Sistema
             </a>
         </li>
     </ul>
 </nav>
+
 
 <div id="content">
     <?php
